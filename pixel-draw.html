@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>像素绘画工具 - Pixel-Master</title>
+    <link rel="stylesheet" href="css/pixel-draw.css">
+    <script src="config/color-info.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 左侧色板区域 -->
+        <div class="palette-area">
+            <div class="palette-header">
+                <span class="palette-label">免费颜色</span>
+            </div>
+            <div class="color-grid" id="free-colors"></div>
+            
+            <div class="palette-header">
+                <span class="palette-label">付费颜色</span>
+                <span class="paid-badge">💎</span>
+            </div>
+            <div class="color-grid" id="paid-colors"></div>
+
+            <!-- 当前选中颜色 -->
+            <div class="current-color-section">
+                <div class="current-color-preview" id="current-color-preview"></div>
+                <span class="current-color-name" id="current-color-name">Black</span>
+            </div>
+        </div>
+
+        <!-- 画布区域 -->
+        <div class="canvas-area">
+            <!-- 顶部工具栏 -->
+            <div class="toolbar" id="toolbar">
+                <a href="index.html" class="back-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                    <span>返回转换器</span>
+                </a>
+                
+                <div class="toolbar-divider"></div>
+
+                <button class="tool-btn active" data-tool="pencil" title="铅笔 (B)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" data-tool="eraser" title="橡皮擦 (E)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20 20H7L3 16l9-9 8 8-4 4z"/>
+                        <path d="M6 11l8 8"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" data-tool="fill" title="填充 (G)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 11l-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11z"/>
+                        <path d="M5 21c.6-1.8 2.6-3 4-3 1.4 0 2.6 2 4 2 1 0 2-1 2-2 0-2-3-3-3-5"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" data-tool="picker" title="取色器 (I)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M2 22l1-1h3l9-9"/>
+                        <path d="M3 21v-3l9-9"/>
+                        <path d="M14.5 5.5L18 2l4 4-3.5 3.5"/>
+                        <path d="M12 8l4 4"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" data-tool="line" title="直线 (L)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="5" y1="19" x2="19" y2="5"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" data-tool="rect" title="矩形 (R)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" data-tool="circle" title="圆形 (C)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                    </svg>
+                </button>
+                
+                <div class="toolbar-divider"></div>
+                
+                <button class="tool-btn" id="undo-btn" title="撤销 (Ctrl+Z)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 7v6h6"/>
+                        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" id="redo-btn" title="重做 (Ctrl+Y)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 7v6h-6"/>
+                        <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/>
+                    </svg>
+                </button>
+
+                <div class="toolbar-divider"></div>
+
+                <button class="tool-btn" id="grid-toggle" title="切换网格">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18"/>
+                        <line x1="3" y1="9" x2="21" y2="9"/>
+                        <line x1="3" y1="15" x2="21" y2="15"/>
+                        <line x1="9" y1="3" x2="9" y2="21"/>
+                        <line x1="15" y1="3" x2="15" y2="21"/>
+                    </svg>
+                </button>
+
+                <div class="toolbar-spacer"></div>
+
+                <button class="action-btn danger" id="clear-btn">清空</button>
+                <button class="action-btn primary" id="download-btn">保存PNG</button>
+            </div>
+
+            <!-- 画布容器 -->
+            <div class="canvas-container" id="canvas-container">
+                <div class="canvas-viewport" id="canvas-viewport">
+                    <canvas id="pixel-canvas"></canvas>
+                </div>
+            </div>
+
+            <!-- 底部状态栏 -->
+            <div class="status-bar">
+                <div class="canvas-info">
+                    <span id="canvas-size-info">画布: 0×0</span>
+                </div>
+                
+                <div class="zoom-controls">
+                    <button class="zoom-btn" id="zoom-out">−</button>
+                    <span class="zoom-level" id="zoom-level">20x</span>
+                    <button class="zoom-btn" id="zoom-in">+</button>
+                </div>
+
+                <div class="bg-colors">
+                    <button class="bg-color-btn active" data-color="#f8f4f0" style="background:#f8f4f0" title="米色"></button>
+                    <button class="bg-color-btn" data-color="#9ebdff" style="background:#9ebdff" title="蓝色"></button>
+                    <button class="bg-color-btn" data-color="#f7efc3" style="background:#f7efc3" title="黄色"></button>
+                    <button class="bg-color-btn" data-color="#d3eac0" style="background:#d3eac0" title="绿色"></button>
+                </div>
+
+                <div class="import-section">
+                    <input type="file" id="import-file" accept="image/*" style="display: none;">
+                    <button class="action-btn" id="import-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <span>导入图片</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/pixel-draw.js"></script>
+</body>
+</html>

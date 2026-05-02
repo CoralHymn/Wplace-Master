@@ -32,7 +32,10 @@
             <span id="zoom-value">100%</span>
         </div>
 
-        <button id="download-btn" disabled>下载当前效果图</button>
+        <div class="preview-actions" style="display: none; gap: 8px; margin-top: 12px;">
+            <button id="download-btn" disabled>下载当前效果图</button>
+            <button id="edit-in-painter-btn" disabled>在绘画工具中编辑</button>
+        </div>
     </div>
 
     <!-- 移动端可拖动分隔条（在画布和功能区间） -->
@@ -187,6 +190,14 @@
     </select>
 </div>
 
+<!-- 像素绘画工具入口 -->
+<div style="position: fixed; top: 20px; left: 20px; z-index: 1000;">
+    <a href="pixel-draw.html" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 500; box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: transform 0.2s;">
+        <span style="font-size: 18px;">🎨</span>
+        <span>像素绘画工具</span>
+    </a>
+</div>
+
 <!-- 桌面端footer -->
 <footer id="main-footer" class="desktop-footer">
     <p>
@@ -198,6 +209,18 @@
 
 <!-- 引入主应用逻辑 -->
 <script src="js/app.js"></script>
+
+<!-- 绘画工具入口按钮事件 -->
+<script>
+document.getElementById('edit-in-painter-btn')?.addEventListener('click', () => {
+    const previewCanvas = document.getElementById('preview-canvas');
+    if (previewCanvas) {
+        const imageData = previewCanvas.toDataURL('image/png');
+        localStorage.setItem('pixel-master-import', imageData);
+        window.location.href = 'pixel-draw.html';
+    }
+});
+</script>
 
 </body>
 </html>
