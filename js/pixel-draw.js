@@ -157,8 +157,13 @@ function findClosestColor(r, g, b) {
  * 初始化色板
  */
 function initPalette() {
+    // 移动端容器
     const freeColorsContainer = document.getElementById('free-colors');
     const paidColorsContainer = document.getElementById('paid-colors');
+    
+    // 桌面端容器
+    const freeColorsContainerDesktop = document.getElementById('free-colors-desktop');
+    const paidColorsContainerDesktop = document.getElementById('paid-colors-desktop');
 
     if (typeof COLOR_INFO === 'undefined') {
         console.error('COLOR_INFO 未定义');
@@ -176,6 +181,7 @@ function initPalette() {
         }
     }
 
+    // 填充移动端容器
     freeColors.forEach(color => {
         freeColorsContainer.appendChild(createColorSwatch(color));
     });
@@ -183,6 +189,17 @@ function initPalette() {
     paidColors.forEach(color => {
         paidColorsContainer.appendChild(createColorSwatch(color, true));
     });
+    
+    // 填充桌面端容器
+    if (freeColorsContainerDesktop && paidColorsContainerDesktop) {
+        freeColors.forEach(color => {
+            freeColorsContainerDesktop.appendChild(createColorSwatch(color));
+        });
+
+        paidColors.forEach(color => {
+            paidColorsContainerDesktop.appendChild(createColorSwatch(color, true));
+        });
+    }
 
     if (freeColors.length > 0) {
         selectColor(freeColors[0]);
