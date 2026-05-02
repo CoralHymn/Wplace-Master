@@ -25,6 +25,10 @@ const state = {
     panOffsetY: 0,
     pinchStartDistance: 0,
     pinchStartZoom: 0,
+    pinchStartCenterX: 0,
+    pinchStartCenterY: 0,
+    pinchStartPanX: 0,
+    pinchStartPanY: 0,
     importedImage: null,
     canvasBgColor: '#f8f4f0'
 };
@@ -706,6 +710,11 @@ function handleTouchStart(e) {
         e.preventDefault();
         state.pinchStartDistance = getTouchDistance(e.touches);
         state.pinchStartZoom = state.zoom;
+        // 记录双指初始中心点
+        state.pinchStartCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        state.pinchStartCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        state.pinchStartPanX = state.panOffsetX;
+        state.pinchStartPanY = state.panOffsetY;
         return;
     }
 
@@ -746,9 +755,36 @@ function handleTouchMove(e) {
         e.preventDefault();
         const currentDistance = getTouchDistance(e.touches);
         const scale = currentDistance / state.pinchStartDistance;
+        
+        // 计算新的双指中心点
+        const currentCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const currentCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        
+        // 计算中心点移动距离
+        const deltaX = currentCenterX - state.pinchStartCenterX;
+        const deltaY = currentCenterY - state.pinchStartCenterY;
+        
+        // 获取画布边界矩形
+        const rect = canvas.getBoundingClientRect();
+        const canvasCenterX = rect.left + rect.width / 2;
+        const canvasCenterY = rect.top + rect.height / 2;
+        
+        // 计算相对于画布中心的鼠标位置
+        const mouseX = currentCenterX - canvasCenterX;
+        const mouseY = currentCenterY - canvasCenterY;
+        
+        // 应用缩放
+        const oldZoom = state.zoom;
         state.zoom = Math.max(1, Math.min(80, Math.round(state.pinchStartZoom * scale)));
+        const ratio = state.zoom / oldZoom;
+        
+        // 计算新的平移偏移
+        state.panOffsetX = state.pinchStartPanX + deltaX + mouseX * (1 - ratio);
+        state.panOffsetY = state.pinchStartPanY + deltaY + mouseY * (1 - ratio);
+        
         updateCanvasTransform();
         updateZoomDisplay();
+        renderCanvas();
         return;
     }
 
