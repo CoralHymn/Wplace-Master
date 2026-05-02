@@ -140,12 +140,25 @@ document.addEventListener('DOMContentLoaded', () => {
         previewCanvas.addEventListener('click', handleCanvasClick);
         previewCanvas.addEventListener('mousemove', handleCanvasMouseMove);
         previewCanvas.addEventListener('mouseleave', hidePixelTooltip);
+        
+        // 移动端 canvas 触摸支持（颜色选择模式）
+        previewCanvas.addEventListener('touchend', handleCanvasTouchEnd);
+        
         document.querySelector('.replacement-palette-tabs').addEventListener('click', handleReplacementTabClick);
         replacementFreeGrid.addEventListener('click', handleReplacementColorClick);
         replacementPaidGrid.addEventListener('click', handleReplacementColorClick);
         applyReplacementBtn.addEventListener('click', handleApplyReplacement);
         clearReplacementBtn.addEventListener('click', handleClearReplacement);
         resetAllReplacementsBtn.addEventListener('click', handleResetAllReplacements);
+
+        // 移动端触摸事件支持
+        viewport.addEventListener('touchstart', handleTouchStart, { passive: false });
+        viewport.addEventListener('touchmove', handleTouchMove, { passive: false });
+        viewport.addEventListener('touchend', handleTouchEnd);
+        viewport.addEventListener('touchcancel', handleTouchEnd);
+
+        // 移动端可拖动分隔条
+        initMobileResizer();
     }
 
     // ==================== 多语言功能 ====================
@@ -1326,6 +1339,174 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         return new ImageData(outputData, originalWidth, originalHeight);
+    }
+
+    // ==================== 移动端触摸事件处理 ====================
+    let touchState = {
+        isTouching: false,
+        lastTouchX: 0,
+        lastTouchY: 0,
+        lastDistance: 0,
+        isPinching: false
+    };
+
+    function handleTouchStart(e) {
+        // 在颜色选择模式下，允许点击事件传播
+        if (state.colorPickerMode) {
+            return; // 不阻止事件，让 canvas 的 click 事件处理
+        }
+
+        e.preventDefault();
+
+        if (e.touches.length === 1) {
+            // 单指触摸 - 平移
+            touchState.isTouching = true;
+            touchState.isPinching = false;
+            touchState.lastTouchX = e.touches[0].clientX;
+            touchState.lastTouchY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+            // 双指触摸 - 缩放
+            touchState.isTouching = true;
+            touchState.isPinching = true;
+            touchState.lastDistance = getTouchDistance(e.touches[0], e.touches[1]);
+        }
+    }
+
+    function handleTouchMove(e) {
+        // 在颜色选择模式下，允许触摸事件传播
+        if (state.colorPickerMode) {
+            return;
+        }
+
+        e.preventDefault();
+
+        if (!touchState.isTouching) return;
+
+        if (e.touches.length === 1 && !touchState.isPinching) {
+            // 单指平移
+            const touchX = e.touches[0].clientX;
+            const touchY = e.touches[0].clientY;
+
+            const dx = touchX - touchState.lastTouchX;
+            const dy = touchY - touchState.lastTouchY;
+
+            state.panX += dx;
+            state.panY += dy;
+
+            touchState.lastTouchX = touchX;
+            touchState.lastTouchY = touchY;
+
+            updateTransform();
+        } else if (e.touches.length === 2 && touchState.isPinching) {
+            // 双指缩放
+            const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
+            const oldZoom = state.zoom;
+
+            // 计算缩放比例
+            const scaleFactor = currentDistance / touchState.lastDistance;
+            state.zoom *= scaleFactor;
+            state.zoom = Math.max(0.2, Math.min(5, state.zoom));
+
+            // 计算双指中心点
+            const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+            const rect = viewport.getBoundingClientRect();
+            const mouseX = centerX - rect.left;
+            const mouseY = centerY - rect.top;
+
+            // 调整平移以保持缩放中心点
+            state.panX = mouseX - (mouseX - state.panX) * (state.zoom / oldZoom);
+            state.panY = mouseY - (mouseY - state.panY) * (state.zoom / oldZoom);
+
+            // 更新缩放滑块
+            zoomSlider.value = Math.round(state.zoom * 100);
+            zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
+
+            touchState.lastDistance = currentDistance;
+            updateTransform();
+        }
+    }
+
+    function handleTouchEnd(e) {
+        touchState.isTouching = false;
+        touchState.isPinching = false;
+    }
+
+    // Canvas 触摸结束事件（用于颜色选择）
+    function handleCanvasTouchEnd(e) {
+        if (!state.colorPickerMode) return;
+        
+        // 触发点击事件
+        const touch = e.changedTouches[0];
+        const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            clientX: touch.clientX,
+            clientY: touch.clientY
+        });
+        previewCanvas.dispatchEvent(clickEvent);
+    }
+
+    function getTouchDistance(touch1, touch2) {
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    // ==================== 移动端可拖动分隔条 ====================
+    function initMobileResizer() {
+        const resizer = document.getElementById('mobile-resizer');
+        const previewPanel = document.getElementById('preview-panel');
+        const controlsPanel = document.getElementById('controls-panel');
+        const mainContainer = document.querySelector('.main-container');
+
+        if (!resizer || !previewPanel || !controlsPanel) return;
+
+        let isResizing = false;
+        let startY = 0;
+        let startHeight = 0;
+
+        function handleResizeStart(e) {
+            e.preventDefault();
+            isResizing = true;
+            startY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+            startHeight = previewPanel.offsetHeight;
+            resizer.style.background = 'var(--primary-color)';
+        }
+
+        function handleResize(e) {
+            if (!isResizing) return;
+            e.preventDefault();
+
+            const currentY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+            const deltaY = currentY - startY;
+            const newHeight = Math.max(200, Math.min(window.innerHeight * 0.8, startHeight + deltaY));
+
+            previewPanel.style.flex = `0 0 ${newHeight}px`;
+
+            // 更新缩放和居中
+            if (state.inputImage) {
+                setTimeout(() => {
+                    centerImage();
+                }, 10);
+            }
+        }
+
+        function handleResizeEnd() {
+            isResizing = false;
+            resizer.style.background = '';
+        }
+
+        // 鼠标事件
+        resizer.addEventListener('mousedown', handleResizeStart);
+        document.addEventListener('mousemove', handleResize);
+        document.addEventListener('mouseup', handleResizeEnd);
+
+        // 触摸事件
+        resizer.addEventListener('touchstart', handleResizeStart, { passive: false });
+        document.addEventListener('touchmove', handleResize, { passive: false });
+        document.addEventListener('touchend', handleResizeEnd);
     }
 
     // --- Start the app ---

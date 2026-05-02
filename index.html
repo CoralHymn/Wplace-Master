@@ -2,6 +2,10 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>更好的Wplace颜色转换器</title>
     <!-- 引入外部样式表 -->
     <link rel="stylesheet" href="css/style.css">
@@ -15,6 +19,28 @@
 <body>
 
 <div class="main-container">
+    <!-- 画布区域（移动端在上） -->
+    <div id="preview-panel">
+        <div id="preview-canvas-viewport" style="display: none;">
+            <canvas id="preview-canvas"></canvas>
+        </div>
+        <p id="placeholder-text">请先上传一张图片</p>
+
+        <div class="preview-controls" style="display: none;">
+            <label for="zoom-slider">缩放:</label>
+            <input type="range" id="zoom-slider" min="20" max="500" value="100">
+            <span id="zoom-value">100%</span>
+        </div>
+
+        <button id="download-btn" disabled>下载当前效果图</button>
+    </div>
+
+    <!-- 移动端可拖动分隔条（在画布和功能区间） -->
+    <div id="mobile-resizer" class="mobile-resizer">
+        <div class="resizer-handle"></div>
+    </div>
+
+    <!-- 功能区（移动端在下） -->
     <div id="controls-panel">
         <h1>Wplace像素色彩转换器</h1>
 
@@ -139,21 +165,15 @@
         <div class="control-group">
             <button id="export-selection-btn">导出选区</button>
         </div>
-    </div>
 
-    <div id="preview-panel">
-        <div id="preview-canvas-viewport" style="display: none;">
-            <canvas id="preview-canvas"></canvas>
-        </div>
-        <p id="placeholder-text">请先上传一张图片</p>
-
-        <div class="preview-controls" style="display: none;">
-            <label for="zoom-slider">缩放:</label>
-            <input type="range" id="zoom-slider" min="20" max="500" value="100">
-            <span id="zoom-value">100%</span>
-        </div>
-
-        <button id="download-btn" disabled>下载当前效果图</button>
+        <!-- 移动端footer放在功能区底部 -->
+        <footer id="mobile-footer" class="mobile-footer">
+            <p>
+                源码来自 <a href="https://github.com/PRTSSourceCode/ColorDitherer" target="_blank">ColorDitherer</a>，
+                感谢【P.R.T.S Alliance】Discord群组
+            </p>
+            <p>由【三文鱼、肉意思】制作</p>
+        </footer>
     </div>
 </div>
 
@@ -167,7 +187,8 @@
     </select>
 </div>
 
-<footer>
+<!-- 桌面端footer -->
+<footer id="main-footer" class="desktop-footer">
     <p>
         源码来自 <a href="https://github.com/PRTSSourceCode/ColorDitherer" target="_blank">ColorDitherer</a>，
         感谢【P.R.T.S Alliance】Discord群组
