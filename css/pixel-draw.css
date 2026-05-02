@@ -399,71 +399,127 @@ body {
     .palette-area {
         width: 100%;
         height: auto;
-        max-height: 100px;
+        max-height: 70px;
         flex-direction: row;
-        padding: 8px;
+        padding: 4px 6px;
         border-right: none;
         border-bottom: 1px solid #dee2e6;
         overflow-x: auto;
         overflow-y: hidden;
-        gap: 12px;
+        gap: 4px;
+        flex-wrap: nowrap;
+        align-items: center;
+        flex-shrink: 0;
     }
 
     .palette-area::-webkit-scrollbar {
-        height: 4px;
+        height: 3px;
     }
 
     .palette-header {
         flex-direction: column;
         width: auto;
-        gap: 2px;
+        gap: 1px;
+        flex-shrink: 0;
+        display: none;
+    }
+
+    .palette-label {
+        font-size: 8px;
+    }
+
+    .paid-badge {
+        font-size: 10px;
     }
 
     .color-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(1, 1fr);
+        grid-auto-flow: column;
+        grid-auto-columns: 22px;
         flex-shrink: 0;
+        gap: 3px;
     }
 
     .color-swatch {
-        width: 28px;
-        height: 28px;
+        width: 22px;
+        height: 22px;
     }
 
     .current-color-section {
         margin-top: 0;
         margin-left: auto;
-        flex-direction: row;
+        flex-direction: column;
+        align-items: center;
         border-top: none;
         border-left: 1px solid #dee2e6;
-        padding: 0 0 0 12px;
-        gap: 8px;
+        padding: 0 0 0 4px;
+        gap: 3px;
+        flex-shrink: 0;
     }
 
     .current-color-preview {
-        width: 36px;
-        height: 36px;
+        width: 28px;
+        height: 28px;
+    }
+
+    .current-color-name {
+        font-size: 8px;
+        max-width: 45px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .toolbar {
-        padding: 8px;
+        padding: 4px 6px;
+        gap: 3px;
+        flex-wrap: nowrap;
+    }
+
+    .toolbar::-webkit-scrollbar {
+        height: 3px;
     }
 
     .back-btn span {
         display: none;
     }
 
+    .back-btn {
+        padding: 4px 6px;
+    }
+
+    .tool-btn {
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+    }
+
+    .toolbar-divider {
+        height: 22px;
+        flex-shrink: 0;
+    }
+
+    .toolbar-spacer {
+        display: none;
+    }
+
     .canvas-container {
+        flex: 1;
+        min-height: 0;
         padding: 0;
     }
 
     .status-bar {
-        padding: 8px;
+        padding: 6px 8px;
+        gap: 8px;
+        flex-shrink: 0;
     }
 
     .canvas-info {
         order: 1;
-        width: 100%;
-        text-align: center;
+        flex: 1;
+        font-size: 11px;
+        text-align: left;
     }
 
     .zoom-controls {
@@ -472,10 +528,38 @@ body {
 
     .bg-colors {
         order: 3;
+        gap: 4px;
+    }
+
+    .bg-color-btn {
+        width: 20px;
+        height: 20px;
     }
 
     .import-section {
         order: 4;
+    }
+
+    .action-btn {
+        padding: 5px 8px;
+        font-size: 11px;
+    }
+
+    .action-btn svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    .action-btn span {
+        display: none;
+    }
+
+    #clear-btn, #download-btn {
+        padding: 5px 8px;
+    }
+
+    #clear-btn span, #download-btn span {
+        display: none;
     }
 }
 
