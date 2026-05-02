@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>更好的Wplace颜色转换器</title>
+    <!-- 引入外部样式表 -->
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- 引入配置文件 -->
+    <script src="config/palette-config.js"></script>
+    <script src="config/algorithm-config.js"></script>
+    <script src="config/language-config.js"></script>
+    <script src="config/color-info.js"></script>
+</head>
+<body>
+
+<div class="main-container">
+    <div id="controls-panel">
+        <h1>Wplace像素色彩转换器</h1>
+
+        <div class="control-group">
+            <h2>1. 选择调色板</h2>
+            <div class="palette-container">
+                <div class="palette-section">
+                    <div class="palette-header">
+                        <span class="palette-title">免费调色板</span>
+                        <button class="select-all-btn" id="free-select-all">全选</button>
+                    </div>
+                    <div class="palette-grid" id="free-palette-grid"></div>
+                </div>
+
+                <div class="palette-section">
+                    <div class="palette-header">
+                        <span class="palette-title">付费调色板</span>
+                        <button class="select-all-btn" id="paid-select-all">全选</button>
+                    </div>
+                    <div class="palette-grid" id="paid-palette-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h2>2. 上传图片</h2>
+            <div class="file-input-wrapper" id="input-wrapper">
+                <input type="file" id="input-file" accept="image/*">
+                <span id="input-text">点击或拖拽图片</span>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h2>3. 调整参数</h2>
+            <div class="slider-group">
+                <label for="dither-strength">抖动强度: <span id="dither-strength-value">100%</span></label>
+                <input type="range" id="dither-strength" min="0" max="100" value="100">
+            </div>
+            <div class="slider-group">
+                <label for="dither-scale">抖动倍率: <span id="dither-scale-value">1倍</span></label>
+                <select id="dither-scale">
+                    <option value="1">1倍</option>
+                    <option value="2">2倍</option>
+                    <option value="4">4倍</option>
+                </select>
+            </div>
+            <div class="slider-group">
+                <label for="image-size">图片尺寸: <span id="image-size-value">100%</span></label>
+                <input type="range" id="image-size" min="10" max="200" value="100">
+            </div>
+            <div class="size-inputs">
+                <div><label for="image-width">宽:</label><input type="number" id="image-width"></div>
+                <div><label for="image-height">高:</label><input type="number" id="image-height"></div>
+            </div>
+            <div class="size-inputs" style="margin-top: 0.5em;">
+                <div><label for="pixel-count">总像素:</label><input type="number" id="pixel-count" min="10" max="1000000"></div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h2>4. 选择算法</h2>
+            <div id="dither-selector" class="dither-selector"></div>
+        </div>
+
+        <div class="control-group">
+            <h2>图像颜色统计</h2>
+            <div id="color-stats-container">
+                <p>处理图片后在此显示颜色用量。</p>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="lock-colors-checkbox">
+                锁定颜色
+            </label>
+        </div>
+
+        <div class="control-group">
+            <h2>5. 颜色选择与替换</h2>
+            <div class="color-replacement-section">
+                <div class="color-picker-mode">
+                    <label>
+                        <input type="checkbox" id="color-picker-mode">
+                        启用颜色选择模式
+                    </label>
+                    <p class="mode-description">启用后，点击图像可选择要替换的颜色</p>
+                </div>
+
+                <div class="selected-color-display" id="selected-color-display" style="display: none;">
+                    <div class="selected-color-info">
+                        <span>已选择颜色:</span>
+                        <div class="color-preview" id="selected-color-preview"></div>
+                        <span id="selected-color-name">未选择</span>
+                    </div>
+                </div>
+
+                <div class="replacement-color-section" id="replacement-color-section" style="display: none;">
+                    <h3>选择替换颜色</h3>
+                    <div class="replacement-palette-tabs">
+                        <button class="tab-btn active" data-tab="free">免费颜色</button>
+                        <button class="tab-btn" data-tab="paid">付费颜色</button>
+                    </div>
+                    <div class="replacement-palette-grid" id="replacement-free-grid"></div>
+                    <div class="replacement-palette-grid" id="replacement-paid-grid" style="display: none;"></div>
+
+                    <div class="replacement-actions">
+                        <button id="apply-replacement-btn" disabled>应用替换</button>
+                        <button id="clear-replacement-btn">清除替换</button>
+                        <button id="reset-all-replacements-btn">重置所有替换</button>
+                    </div>
+                </div>
+
+                <div class="replacement-list" id="replacement-list">
+                    <h3>当前替换映射</h3>
+                    <div class="replacement-items" id="replacement-items">
+                        <p class="no-replacements">暂无颜色替换</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <button id="export-selection-btn">导出选区</button>
+        </div>
+    </div>
+
+    <div id="preview-panel">
+        <div id="preview-canvas-viewport" style="display: none;">
+            <canvas id="preview-canvas"></canvas>
+        </div>
+        <p id="placeholder-text">请先上传一张图片</p>
+
+        <div class="preview-controls" style="display: none;">
+            <label for="zoom-slider">缩放:</label>
+            <input type="range" id="zoom-slider" min="20" max="500" value="100">
+            <span id="zoom-value">100%</span>
+        </div>
+
+        <button id="download-btn" disabled>下载当前效果图</button>
+    </div>
+</div>
+
+<!-- 多语言选择器 -->
+<div id="language-selector" style="position: fixed; top: 20px; right: 20px; z-index: 1000; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <select id="language-select" style="border: 1px solid #ddd; padding: 5px; border-radius: 4px;">
+        <option value="zh">中文</option>
+        <option value="ru">Русский</option>
+        <option value="en">English</option>
+        <option value="ja">日本語</option>
+    </select>
+</div>
+
+<footer>
+    <p>
+        源码来自 <a href="https://github.com/PRTSSourceCode/ColorDitherer" target="_blank">ColorDitherer</a>，
+        感谢【P.R.T.S Alliance】Discord群组
+    </p>
+    <p>由【三文鱼、肉意思】制作</p>
+</footer>
+
+<!-- 引入主应用逻辑 -->
+<script src="js/app.js"></script>
+
+</body>
+</html>
