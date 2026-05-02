@@ -458,27 +458,7 @@ body {
     }
 
     .current-color-section {
-        margin-top: 6px;
-        margin-left: auto;
-        flex-direction: column;
-        align-items: center;
-        border-top: 1px solid #dee2e6;
-        padding-top: 6px;
-        gap: 3px;
-        flex-shrink: 0;
-    }
-
-    .current-color-preview {
-        width: 28px;
-        height: 28px;
-    }
-
-    .current-color-name {
-        font-size: 8px;
-        max-width: 45px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        display: none;
     }
 
     .toolbar {
