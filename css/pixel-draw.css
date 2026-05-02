@@ -36,6 +36,17 @@ body {
     box-shadow: 2px 0 8px rgba(0,0,0,0.05);
 }
 
+/* 隐藏移动端容器 */
+.palette-mobile-container {
+    display: none;
+}
+
+/* 显示桌面端元素 */
+.palette-desktop-header,
+.desktop-only {
+    display: block;
+}
+
 .palette-area::-webkit-scrollbar {
     width: 4px;
 }
@@ -399,60 +410,60 @@ body {
     .palette-area {
         width: 100%;
         height: auto;
-        max-height: 70px;
-        flex-direction: row;
-        padding: 4px 6px;
+        flex-direction: column;
+        padding: 6px;
         border-right: none;
         border-bottom: 1px solid #dee2e6;
+        overflow: hidden;
+        gap: 0;
+        flex-shrink: 0;
+    }
+
+    /* 隐藏桌面端元素 */
+    .palette-desktop-header,
+    .desktop-only {
+        display: none !important;
+    }
+
+    /* 移动端大容器 - 可横向滚动 */
+    .palette-mobile-container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
         overflow-x: auto;
         overflow-y: hidden;
         gap: 4px;
-        flex-wrap: nowrap;
-        align-items: center;
-        flex-shrink: 0;
+        padding: 2px 0;
     }
 
-    .palette-area::-webkit-scrollbar {
+    .palette-mobile-container::-webkit-scrollbar {
         height: 3px;
     }
 
-    .palette-header {
-        flex-direction: column;
-        width: auto;
-        gap: 1px;
-        flex-shrink: 0;
-        display: none;
-    }
-
-    .palette-label {
-        font-size: 8px;
-    }
-
-    .paid-badge {
-        font-size: 10px;
-    }
-
-    .color-grid {
-        grid-template-columns: repeat(1, 1fr);
-        grid-auto-flow: column;
-        grid-auto-columns: 22px;
-        flex-shrink: 0;
+    /* 移动端小容器 - 不滚动 */
+    .palette-mobile-container .color-grid {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        overflow: visible;
         gap: 3px;
+        width: max-content;
+        min-width: 100%;
     }
 
     .color-swatch {
-        width: 22px;
-        height: 22px;
+        width: 26px;
+        height: 26px;
+        flex-shrink: 0;
     }
 
     .current-color-section {
-        margin-top: 0;
+        margin-top: 6px;
         margin-left: auto;
         flex-direction: column;
         align-items: center;
-        border-top: none;
-        border-left: 1px solid #dee2e6;
-        padding: 0 0 0 4px;
+        border-top: 1px solid #dee2e6;
+        padding-top: 6px;
         gap: 3px;
         flex-shrink: 0;
     }

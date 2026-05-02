@@ -13,16 +13,23 @@
     <div class="app-container">
         <!-- 左侧色板区域 -->
         <div class="palette-area">
-            <div class="palette-header">
+            <!-- 移动端色板容器 -->
+            <div class="palette-mobile-container">
+                <div class="color-grid" id="free-colors"></div>
+                <div class="color-grid" id="paid-colors"></div>
+            </div>
+
+            <!-- 桌面端色板（保持原有结构） -->
+            <div class="palette-desktop-header">
                 <span class="palette-label">免费颜色</span>
             </div>
-            <div class="color-grid" id="free-colors"></div>
+            <div class="color-grid desktop-only" id="free-colors-desktop"></div>
             
-            <div class="palette-header">
+            <div class="palette-desktop-header">
                 <span class="palette-label">付费颜色</span>
                 <span class="paid-badge">💎</span>
             </div>
-            <div class="color-grid" id="paid-colors"></div>
+            <div class="color-grid desktop-only" id="paid-colors-desktop"></div>
 
             <!-- 当前选中颜色 -->
             <div class="current-color-section">
