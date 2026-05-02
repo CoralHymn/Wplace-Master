@@ -412,6 +412,11 @@ footer {
     z-index: 100;
 }
 
+/* 移动端footer默认隐藏 */
+.mobile-footer {
+    display: none !important;
+}
+
 footer a {
     color: var(--primary-color);
     text-decoration: none;
@@ -600,4 +605,484 @@ footer a:hover { text-decoration: underline; }
 /* 图像点击模式样式 */
 #preview-canvas.color-picker-active {
     cursor: crosshair !important;
+}
+
+/* ==================== 移动端响应式设计 ==================== */
+
+/* 移动端分隔条默认隐藏 */
+.mobile-resizer {
+    display: none;
+}
+
+/* 平板和手机通用样式 (768px 以下) */
+@media screen and (max-width: 768px) {
+    /* 改变布局方向为垂直 */
+    .main-container {
+        flex-direction: column;
+        width: 100vw !important;
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+    }
+
+    /* 预览区域在上 */
+    #preview-panel {
+        order: 1;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box;
+        flex: 0 0 50vh;
+        min-height: 250px;
+        padding: 0.8em;
+        overflow: hidden;
+    }
+
+    /* 移动端可拖动分隔条 - 在画布和功能区间 */
+    .mobile-resizer {
+        display: block !important;
+        order: 2;
+        height: 24px;
+        background: var(--surface-color);
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        cursor: row-resize;
+        touch-action: none;
+        position: relative;
+        z-index: 50;
+        flex-shrink: 0;
+    }
+
+    .resizer-handle {
+        width: 40px;
+        height: 4px;
+        background: var(--muted-color);
+        border-radius: 2px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        opacity: 0.5;
+    }
+
+    .mobile-resizer:active {
+        background: var(--primary-color);
+    }
+
+    .mobile-resizer:active .resizer-handle {
+        opacity: 1;
+        background: white;
+    }
+
+    /* 控制面板在下 */
+    #controls-panel {
+        order: 3;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box;
+        flex: 1;
+        border-right: none;
+        border-top: none;
+        padding: 1em 0.8em;
+        box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+        overflow-x: hidden !important;
+        overflow-y: auto;
+    }
+
+    /* 隐藏桌面端footer */
+    .desktop-footer {
+        display: none !important;
+    }
+
+    /* 显示移动端footer在功能区底部 */
+    .mobile-footer {
+        display: block !important;
+        padding: 0.8em;
+        margin: 0 -0.8em -1em -0.8em;
+        background: var(--background-color);
+        border-top: 1px solid var(--border-color);
+        font-size: 11px;
+        text-align: center;
+        color: var(--muted-color);
+    }
+
+    .mobile-footer p {
+        margin: 0.3em 0;
+    }
+
+    .mobile-footer a {
+        color: var(--primary-color);
+        text-decoration: none;
+    }
+
+    /* 标题缩小 */
+    h1 {
+        font-size: 1.3em;
+        margin-bottom: 0.6em;
+    }
+
+    h2 {
+        font-size: 0.95em;
+        margin-bottom: 0.6em;
+    }
+
+    /* 确保所有内容都不超出屏幕 */
+    .palette-grid,
+    .replacement-palette-grid,
+    .dither-selector {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    /* 预览视口优化 */
+    #preview-canvas-viewport {
+        border-radius: 4px;
+        touch-action: none;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* 画布支持触摸 */
+    #preview-canvas {
+        touch-action: none;
+        max-width: 100% !important;
+    }
+
+    /* 颜色样本稍微放大，便于触摸 */
+    .color-swatch {
+        width: 28px;
+        height: 28px;
+        border-radius: 5px;
+    }
+
+    /* 调色板网格间距增大 */
+    .palette-grid {
+        gap: 10px;
+    }
+
+    /* 按钮优化 - 增大触摸区域 */
+    button,
+    .select-all-btn,
+    .tab-btn,
+    .dither-selector button {
+        min-height: 44px; /* iOS 推荐的最小触摸区域 */
+        padding: 0.6em 1.2em;
+        font-size: 14px;
+    }
+
+    /* 滑块优化 */
+    input[type="range"] {
+        height: 30px;
+    }
+
+    /* 输入框优化 */
+    input[type="number"],
+    input[type="file"],
+    select {
+        min-height: 44px;
+        font-size: 16px; /* 防止 iOS 自动缩放 */
+    }
+
+    /* 下载按钮固定在底部 */
+    #download-btn {
+        bottom: 1em !important;
+        right: 1em !important;
+        left: 1em !important;
+        width: auto !important;
+        padding: 0.9em 1.5em;
+        font-size: 16px;
+        z-index: 100;
+    }
+
+    /* 确保下载按钮在移动端可以显示 */
+    #download-btn[style*="display: block"],
+    #download-btn:not([style*="display: none"]) {
+        display: block !important;
+    }
+
+    /* 预览控制条 */
+    .preview-controls {
+        bottom: 5em;
+        padding: 0.6em 1em;
+        font-size: 14px;
+    }
+
+    /* 语言选择器位置调整 */
+    #language-selector {
+        top: 10px;
+        right: 10px;
+        padding: 6px;
+    }
+
+    #language-selector select {
+        font-size: 14px;
+        padding: 4px;
+    }
+
+    /* 文件上传区域 */
+    .file-input-wrapper {
+        height: 100px;
+    }
+
+    /* 颜色统计容器 */
+    #color-stats-container {
+        max-height: 150px;
+    }
+
+    /* 替换列表 */
+    .replacement-items {
+        max-height: 150px;
+    }
+
+    /* 工具提示优化 */
+    .pixel-tooltip {
+        font-size: 11px;
+        padding: 6px 10px;
+    }
+
+    /* 防止文本选择干扰触摸操作 */
+    #preview-canvas-viewport {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+    }
+}
+
+/* 小屏手机优化 (480px 以下) */
+@media screen and (max-width: 480px) {
+    #preview-panel {
+        flex: 0 0 45vh;
+        min-height: 250px;
+        padding: 0.5em;
+    }
+
+    #controls-panel {
+        padding: 0.8em;
+    }
+
+    h1 {
+        font-size: 1.2em;
+    }
+
+    h2 {
+        font-size: 0.95em;
+    }
+
+    /* 更紧凑的控件 */
+    .control-group {
+        margin-bottom: 1.2em;
+    }
+
+    /* 颜色样本进一步缩小以适应小屏 */
+    .color-swatch {
+        width: 24px;
+        height: 24px;
+    }
+
+    .palette-grid {
+        gap: 8px;
+    }
+
+    /* 尺寸输入框改为垂直排列 */
+    .size-inputs {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .size-inputs div {
+        justify-content: space-between;
+    }
+
+    /* 下载按钮文字简化 */
+    #download-btn {
+        padding: 0.8em 1em;
+        font-size: 15px;
+    }
+}
+
+/* 横屏模式优化 */
+@media screen and (max-width: 768px) and (orientation: landscape) {
+    #preview-panel {
+        flex: 0 0 60vh;
+    }
+
+    #controls-panel {
+        max-height: 40vh;
+        overflow-y: auto;
+    }
+}
+
+/* 触摸设备特定优化 */
+@media (hover: none) and (pointer: coarse) {
+    /* 移除悬停效果，改用激活状态 */
+    .color-swatch:hover {
+        transform: none;
+    }
+
+    .color-swatch:active {
+        transform: scale(0.95);
+    }
+
+    button:hover {
+        transform: none;
+    }
+
+    button:active {
+        transform: scale(0.98);
+        opacity: 0.8;
+    }
+
+    /* 增大所有可点击元素的触摸区域 */
+    .select-all-btn,
+    .tab-btn,
+    .dither-selector button,
+    .replacement-actions button,
+    .remove-replacement-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* 触摸设备特定优化 */
+@media (hover: none) and (pointer: coarse) {
+    /* 移除悬停效果，改用激活状态 */
+    .color-swatch:hover {
+        transform: none;
+    }
+
+    .color-swatch:active {
+        transform: scale(0.95);
+    }
+
+    button:hover {
+        transform: none;
+    }
+
+    button:active {
+        transform: scale(0.98);
+        opacity: 0.8;
+    }
+
+    /* 增大所有可点击元素的触摸区域 */
+    .select-all-btn,
+    .tab-btn,
+    .dither-selector button,
+    .replacement-actions button,
+    .remove-replacement-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* ==================== 额外移动端优化 ==================== */
+
+@media screen and (max-width: 768px) {
+    /* 导出按钮优化 */
+    #export-selection-btn {
+        width: 100%;
+        min-height: 44px;
+        padding: 0.7em 1em;
+        font-size: 15px;
+    }
+
+    /* 锁定颜色复选框增大 */
+    #lock-colors-checkbox {
+        width: 20px;
+        height: 20px;
+        margin-right: 8px;
+    }
+
+    /* 颜色选择模式描述文字缩小 */
+    .mode-description {
+        font-size: 12px;
+    }
+
+    /* 替换操作按钮全宽 */
+    .replacement-actions {
+        flex-direction: column;
+    }
+
+    .replacement-actions button {
+        width: 100%;
+    }
+
+    /* 替换项目中的删除按钮增大 */
+    .remove-replacement-btn {
+        padding: 0.5em 0.8em;
+        font-size: 13px;
+        min-height: 36px;
+    }
+
+    /* 页脚 - 移动端改为相对定位，不占用屏幕空间 */
+    footer {
+        position: relative !important;
+        bottom: auto !important;
+        right: auto !important;
+        padding: 0.8em 1em;
+        text-align: center;
+        font-size: 11px;
+        background: var(--surface-color);
+        border-top: 1px solid var(--border-color);
+    }
+
+    /* 语言选择器在移动端简化 */
+    #language-selector {
+        top: 5px;
+        right: 5px;
+        padding: 5px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    }
+
+    /* 抖动算法选择器横向滚动 */
+    .dither-selector {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 5px;
+    }
+
+    .dither-selector button {
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    /* 调色板全选按钮位置优化 */
+    .palette-header {
+        flex-wrap: wrap;
+        gap: 0.5em;
+    }
+
+    .select-all-btn {
+        align-self: flex-end;
+    }
+
+    /* 预览控制条中的滑块 */
+    #zoom-slider {
+        flex: 1;
+        min-width: 100px;
+    }
+
+    .preview-controls {
+        width: 90%;
+        max-width: 400px;
+    }
+}
+
+/* 超小屏幕优化 */
+@media screen and (max-width: 360px) {
+    #controls-panel {
+        padding: 0.6em;
+    }
+
+    .color-swatch {
+        width: 22px;
+        height: 22px;
+    }
+
+    h1 {
+        font-size: 1.1em;
+    }
+
+    h2 {
+        font-size: 0.9em;
+    }
 }
