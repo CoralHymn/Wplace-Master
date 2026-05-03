@@ -1621,7 +1621,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.colorReplacements.set(sourceKey, state.selectedReplacementColor);
 
         updateReplacementList();
-        updatePreview();
+        smartUpdatePreview();
 
         handleClearReplacement();
     }
@@ -1641,13 +1641,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleResetAllReplacements() {
         state.colorReplacements.clear();
         updateReplacementList();
-        updatePreview();
+        smartUpdatePreview();
         handleClearReplacement();
     }
 
     function updateReplacementList() {
+        const t = TRANSLATIONS[currentLanguage];
+        
         if (state.colorReplacements.size === 0) {
-            const t = TRANSLATIONS[currentLanguage];
             replacementItems.innerHTML = `<p class="no-replacements">${t.noReplacements || 'No color replacements'}</p>`;
             return;
         }
@@ -1693,7 +1694,7 @@ document.addEventListener('DOMContentLoaded', () => {
             removeBtn.addEventListener('click', () => {
                 state.colorReplacements.delete(sourceColorStr);
                 updateReplacementList();
-                updatePreview();
+                smartUpdatePreview();
             });
 
             replacementItems.appendChild(item);
