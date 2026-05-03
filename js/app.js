@@ -908,7 +908,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         sizeSlider.value = Math.round(state.imageSize * 100);
         const sizeValueEl = document.getElementById('image-size-value');
-        if (sizeValueEl) sizeValueEl.textContent = `${sizeSlider.value}%`;
+        if (sizeValueEl) sizeValueEl.value = sizeSlider.value;
         
         imageWidthInput.value = newWidth;
         imageHeightInput.value = newHeight;
