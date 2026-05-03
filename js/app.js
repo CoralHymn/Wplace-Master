@@ -42,7 +42,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // 图片处理参数（实验性功能）
         brightness: 100,
         contrast: 100,
-        saturation: 100
+        saturation: 100,
+        // 实时调整开关
+        realtimeEnabled: true
     };
 
     // --- DOM Elements ---
@@ -92,6 +94,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearReplacementBtn = document.getElementById('clear-replacement-btn');
     const resetAllReplacementsBtn = document.getElementById('reset-all-replacements-btn');
     const replacementItems = document.getElementById('replacement-items');
+
+    // 实时调整开关相关DOM元素
+    const realtimeToggle = document.getElementById('realtime-toggle');
+    const manualGenerateBtn = document.getElementById('manual-generate-btn');
 
     // 像素悬浮提示框相关变量
     let pixelTooltip = null;
@@ -162,8 +168,12 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('export-selection-btn').addEventListener('click', handleExportColors);
         document.getElementById('lock-colors-checkbox').addEventListener('change', (e) => {
             state.isLocked = e.target.checked;
-            updatePreview();
+            smartUpdatePreview();
         });
+
+        // 实时调整开关事件监听器
+        realtimeToggle.addEventListener('change', handleRealtimeToggleChange);
+        manualGenerateBtn.addEventListener('click', handleManualGenerate);
 
         // 颜色选择和替换功能事件监听器
         colorPickerModeCheckbox.addEventListener('change', handleColorPickerModeToggle);
@@ -439,7 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderPaletteGrid('paid');
         }
         updateActivePalette();
-        updatePreview();
+        smartUpdatePreview();
     }
 
     function handleSwatchClick(e) {
@@ -471,7 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateActivePalette();
-        updatePreview();
+        smartUpdatePreview();
     }
 
     function updateSelectAllButton(type) {
@@ -511,7 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateSizeUI();
         resetPanAndZoom();
-        updatePreview();
+        smartUpdatePreview();
     }
 
     function loadImage(src) {
@@ -641,7 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.brightness = parseInt(e.target.value);
         const el = document.getElementById('brightness-value');
         if (el) el.value = state.brightness;
-        updatePreview();
+        smartUpdatePreview();
     }
 
     /**
@@ -655,7 +665,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         state.brightness = value;
         brightnessSlider.value = value;
-        updatePreview();
+        smartUpdatePreview();
     }
 
     /**
@@ -665,7 +675,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.contrast = parseInt(e.target.value);
         const el = document.getElementById('contrast-value');
         if (el) el.value = state.contrast;
-        updatePreview();
+        smartUpdatePreview();
     }
 
     /**
@@ -679,7 +689,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         state.contrast = value;
         contrastSlider.value = value;
-        updatePreview();
+        smartUpdatePreview();
     }
 
     /**
@@ -689,7 +699,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.saturation = parseInt(e.target.value);
         const el = document.getElementById('saturation-value');
         if (el) el.value = state.saturation;
-        updatePreview();
+        smartUpdatePreview();
     }
 
     /**
@@ -703,7 +713,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         state.saturation = value;
         saturationSlider.value = value;
-        updatePreview();
+        smartUpdatePreview();
     }
 
     /**
@@ -726,7 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (contrastEl) contrastEl.value = 100;
         if (saturationEl) saturationEl.value = 100;
         
-        updatePreview();
+        smartUpdatePreview();
     }
 
     function findClosestColor(color, palette) {
@@ -798,6 +808,38 @@ document.addEventListener('DOMContentLoaded', () => {
         updateColorStats(processedImageData);
     }
 
+    /**
+     * 智能更新预览 - 根据实时调整开关决定是否立即更新
+     */
+    function smartUpdatePreview() {
+        if (state.realtimeEnabled) {
+            updatePreview();
+        }
+        // 如果实时调整关闭，则不执行任何操作，等待用户点击“生成图片”按钮
+    }
+
+    /**
+     * 实时调整开关变化处理
+     */
+    function handleRealtimeToggleChange(e) {
+        state.realtimeEnabled = e.target.checked;
+        if (state.realtimeEnabled) {
+            // 开启实时调整时，隐藏手动生成按钮，并立即更新
+            manualGenerateBtn.style.display = 'none';
+            updatePreview();
+        } else {
+            // 关闭实时调整时，显示手动生成按钮
+            manualGenerateBtn.style.display = 'block';
+        }
+    }
+
+    /**
+     * 手动生成图片按钮点击处理
+     */
+    function handleManualGenerate() {
+        updatePreview();
+    }
+
     // ==================== 参数调整功能 ====================
     
     /**
@@ -807,7 +849,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.ditherStrength = strengthSlider.value / 100;
         const el = document.getElementById('dither-strength-value');
         if (el) el.value = strengthSlider.value;
-        updatePreview();
+        smartUpdatePreview();
     }
 
     /**
@@ -821,14 +863,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         state.ditherStrength = value / 100;
         strengthSlider.value = value;
-        updatePreview();
+        smartUpdatePreview();
     }
 
     function handleDitherScaleChange() {
         state.ditherScale = parseInt(ditherScaleSelect.value);
         const el = document.getElementById('dither-scale-value');
         if (el) el.textContent = `${ditherScaleSelect.value}倍`;
-        updatePreview();
+        smartUpdatePreview();
     }
 
     /**
@@ -837,7 +879,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleSizeSliderChange() {
         state.imageSize = sizeSlider.value / 100;
         updateSizeUI();
-        updatePreview();
+        smartUpdatePreview();
         centerImage();
     }
 
@@ -853,7 +895,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.imageSize = value / 100;
         sizeSlider.value = value;
         updateSizeUI();
-        updatePreview();
+        smartUpdatePreview();
         centerImage();
     }
 
@@ -867,7 +909,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         state.imageSize = newWidth / state.originalWidth;
         updateSizeUI();
-        updatePreview();
+        smartUpdatePreview();
         centerImage();
     }
 
