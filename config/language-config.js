@@ -69,7 +69,13 @@ const LANGUAGE_CONFIG = {
             // 颜色选择与替换
             lockColors: "锁定颜色",
             colorSelection: "5. 颜色选择与替换",
-            notSelected: "未选择"
+            notSelected: "未选择",
+            // 其他UI元素
+            ditherScale: "抖动倍率",
+            imageProcessingDesc: "调整图片的亮度、对比度和饱和度",
+            exportSelection: "导出选区",
+            editInPainter: "在绘画工具中编辑",
+            pixelPaintTool: "像素绘画工具"
         },
         ru: {
             title: "Лучший конвертер цветов Wplace",
@@ -127,7 +133,12 @@ const LANGUAGE_CONFIG = {
             // 颜色选择与替换
             lockColors: "Блокировать цвета",
             colorSelection: "5. Выбор и замена цветов",
-            notSelected: "Не выбрано"
+            notSelected: "Не выбрано",
+            // 其他UI元素
+            ditherScale: "Масштаб дизеринга",
+            exportSelection: "Экспортировать выделение",
+            editInPainter: "Редактировать в инструменте рисования",
+            pixelPaintTool: "Инструмент пиксельной живописи"
         },
         en: {
             title: "Better Wplace Color Converter",
@@ -185,7 +196,13 @@ const LANGUAGE_CONFIG = {
             // 颜色选择与替换
             lockColors: "Lock Colors",
             colorSelection: "5. Color Selection and Replacement",
-            notSelected: "Not Selected"
+            notSelected: "Not Selected",
+            // 其他UI元素
+            ditherScale: "Dither Scale",
+            imageProcessingDesc: "Adjust brightness, contrast and saturation of the image",
+            exportSelection: "Export Selection",
+            editInPainter: "Edit in Painting Tool",
+            pixelPaintTool: "Pixel Paint Tool"
         },
         ja: {
             title: "より良いWplace色変換器",
@@ -243,7 +260,12 @@ const LANGUAGE_CONFIG = {
             // 颜色选择与替换
             lockColors: "色をロック",
             colorSelection: "5. 色の選択と置換",
-            notSelected: "未選択"
+            notSelected: "未選択",
+            // 其他UI元素
+            ditherScale: "ディザ倍率",
+            exportSelection: "選択範囲をエクスポート",
+            editInPainter: "描画ツールで編集",
+            pixelPaintTool: "ピクセルペイントツール"
         }
     }
 };

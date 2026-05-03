@@ -298,6 +298,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (h2Elements[1]) h2Elements[1].textContent = t.uploadImage;
         if (h2Elements[2]) h2Elements[2].textContent = t.adjustParams;
         if (h2Elements[3]) h2Elements[3].textContent = t.selectAlgorithm;
+        // h2Elements[4] 是"图像颜色统计"，通过ID单独处理
+        // h2Elements[5] 是"5. 颜色选择与替换"，在后面单独处理
 
         const colorStatsTitle = document.getElementById('color-stats-title');
         if (colorStatsTitle) colorStatsTitle.textContent = t.colorStats;
@@ -312,6 +314,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // 更新标签文本（不破坏input元素）
         const ditherStrengthLabel = document.getElementById('dither-strength-label');
         if (ditherStrengthLabel) ditherStrengthLabel.textContent = t.ditherStrength;
+
+        const ditherScaleLabel = document.getElementById('dither-scale-label');
+        if (ditherScaleLabel) ditherScaleLabel.textContent = t.ditherScale || 'Dither Scale';
 
         const imageSizeLabel = document.getElementById('image-size-label');
         if (imageSizeLabel) imageSizeLabel.textContent = t.imageSize;
@@ -354,8 +359,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // 更新图片处理相关文本（实验性功能）
-        const imageProcessingTitle = document.querySelector('.experimental-section h3');
+        const imageProcessingTitle = document.getElementById('image-processing-title');
         if (imageProcessingTitle) imageProcessingTitle.textContent = t.imageProcessing || 'Image Processing (Experimental)';
+        
+        const imageProcessingDesc = document.getElementById('image-processing-desc');
+        if (imageProcessingDesc) imageProcessingDesc.textContent = t.imageProcessingDesc || 'Adjust brightness, contrast and saturation of the image';
         
         const resetBtn = document.getElementById('reset-image-adjustments');
         if (resetBtn) resetBtn.textContent = t.resetAdjustments || 'Reset All Adjustments';
@@ -382,7 +390,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const lockColorsLabel = document.getElementById('lock-colors-label');
         if (lockColorsLabel) lockColorsLabel.textContent = t.lockColors || 'Lock Colors';
 
-        const h2Fifth = document.querySelectorAll('h2')[4];
+        // 更新"5. 颜色选择与替换"标题（第6个h2，索引为5）
+        const h2Fifth = document.querySelectorAll('h2')[5];
         if (h2Fifth) h2Fifth.textContent = t.colorSelection || '5. Color Selection and Replacement';
 
         const colorPickerLabel = document.getElementById('color-picker-label');
@@ -412,6 +421,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const replacementListTitle = document.querySelector('.replacement-list h3');
         if (replacementListTitle) replacementListTitle.textContent = t.currentReplacements || 'Current Replacements';
+
+        // 更新按钮文本
+        const exportSelectionLabel = document.getElementById('export-selection-label');
+        if (exportSelectionLabel) exportSelectionLabel.textContent = t.exportSelection || 'Export Selection';
+
+        const editInPainterLabel = document.getElementById('edit-in-painter-label');
+        if (editInPainterLabel) editInPainterLabel.textContent = t.editInPainter || 'Edit in Painting Tool';
+
+        const pixelPaintToolLabel = document.getElementById('pixel-paint-tool-label');
+        if (pixelPaintToolLabel) pixelPaintToolLabel.textContent = t.pixelPaintTool || 'Pixel Paint Tool';
 
         updateSelectAllButtons();
     }
@@ -1051,16 +1070,16 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function formatTime(seconds) {
         if (seconds < 60) {
-            return `${Math.ceil(seconds)}秒`;
+            return `${Math.ceil(seconds)}s`;
         } else if (seconds < 3600) {
             const minutes = Math.ceil(seconds / 60);
-            return `${minutes}分钟`;
+            return `${minutes}min`;
         } else if (seconds < 86400) {
             const hours = Math.ceil(seconds / 3600);
-            return `${hours}小时`;
+            return `${hours}h`;
         } else {
             const days = Math.ceil(seconds / 86400);
-            return `${days}天`;
+            return `${days}d`;
         }
     }
 
