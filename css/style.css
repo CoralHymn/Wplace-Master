@@ -267,11 +267,28 @@ input[type="file"] {
 .slider-group label, .size-inputs label {
     display: flex;
     align-items: center;
-    gap: 0.3em;
+    justify-content: space-between;
+    gap: 0.5em;
+}
+
+.slider-group label span,
+.slider-group label input[type="number"] {
+    display: inline-flex;
+    align-items: center;
 }
 
 .slider-group label input[type="number"] {
-    margin-left: 0.2em;
+    margin-left: auto;
+}
+
+/* 确保百分号紧跟在输入框后面 */
+.slider-group label {
+    white-space: nowrap;
+}
+
+/* 为标签文本添加最小宽度，确保对齐 */
+.slider-group label span {
+    min-width: fit-content;
 }
 
 input[type="range"] { width: 100%; }
