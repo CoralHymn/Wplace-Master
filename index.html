@@ -84,6 +84,13 @@
                 </label>
                 <button id="manual-generate-btn" style="display: none; margin-top: 0.5em; width: 100%; padding: 0.6em; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500;">生成图片</button>
             </div>
+            <div class="realtime-toggle-section" style="margin-bottom: 1em; padding: 0.8em; background: #f8f9fa; border-radius: 6px; border-left: 3px solid #28a745;">
+                <label style="display: flex; align-items: center; gap: 0.5em; cursor: pointer; margin: 0;">
+                    <input type="checkbox" id="force-opaque-toggle" style="width: 18px; height: 18px;">
+                    <span style="font-weight: 500;">强制去除半透明像素</span>
+                </label>
+                <p style="font-size: 0.8em; color: #666; margin: 0.5em 0 0 0;">开启后：透明度&lt;50%变透明，&gt;=50%变不透明并匹配色板</p>
+            </div>
             <div class="slider-group">
                 <label for="dither-strength"><span id="dither-strength-label">抖动强度</span><input type="number" id="dither-strength-value" min="0" max="100" value="100" style="width: 60px; padding: 2px 4px;">%</label>
                 <input type="range" id="dither-strength" min="0" max="100" value="100">

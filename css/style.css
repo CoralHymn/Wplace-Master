@@ -318,6 +318,11 @@ input[type="file"] {
     transform: translateY(0);
 }
 
+/* 强制去除半透明像素开关特殊样式 */
+.realtime-toggle-section[style*="border-left: 3px solid #28a745"] {
+    border-left-color: #28a745 !important;
+}
+
 /* 参与人数输入框样式 */
 #participant-count {
     transition: border-color 0.2s;
@@ -346,6 +351,12 @@ input[type="file"] {
     #manual-generate-btn {
         min-height: 44px;
         font-size: 15px;
+    }
+
+    /* 强制去除半透明像素说明文字 */
+    .realtime-toggle-section p {
+        font-size: 12px !important;
+        line-height: 1.4;
     }
 
     /* 图像颜色统计头部移动端优化 */

@@ -46,7 +46,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // 实时调整开关
         realtimeEnabled: true,
         // 参与人数
-        participantCount: 1
+        participantCount: 1,
+        // 强制去除半透明像素
+        forceOpaqueEnabled: false
     };
 
     // --- DOM Elements ---
@@ -104,6 +106,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 预计完成时间相关DOM元素
     const participantCountInput = document.getElementById('participant-count');
     const estimatedTimeDisplay = document.getElementById('estimated-time');
+
+    // 强制去除半透明像素相关DOM元素
+    const forceOpaqueToggle = document.getElementById('force-opaque-toggle');
 
     // 像素悬浮提示框相关变量
     let pixelTooltip = null;
@@ -184,6 +189,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // 参与人数变化事件监听器
         participantCountInput.addEventListener('change', handleParticipantCountChange);
         participantCountInput.addEventListener('input', handleParticipantCountChange);
+
+        // 强制去除半透明像素开关事件监听器
+        forceOpaqueToggle.addEventListener('change', handleForceOpaqueToggleChange);
 
         // 颜色选择和替换功能事件监听器
         colorPickerModeCheckbox.addEventListener('change', handleColorPickerModeToggle);
@@ -767,6 +775,50 @@ document.addEventListener('DOMContentLoaded', () => {
         return closestColor;
     }
 
+    /**
+     * 强制去除半透明像素
+     * @param {ImageData} imageData - 图像数据
+     * @param {Array} palette - 颜色调色板
+     * @returns {ImageData} 处理后的图像数据
+     */
+    function applyForceOpaque(imageData, palette) {
+        const data = imageData.data;
+        const newImageData = new ImageData(imageData.width, imageData.height);
+        const newData = newImageData.data;
+
+        // 复制原始数据
+        for (let i = 0; i < data.length; i++) {
+            newData[i] = data[i];
+        }
+
+        // 处理每个像素
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const a = data[i + 3];
+
+            // 透明度小于50%（128）的变成完全透明
+            if (a < 128) {
+                newData[i] = 0;
+                newData[i + 1] = 0;
+                newData[i + 2] = 0;
+                newData[i + 3] = 0;
+            } else {
+                // 透明度大于等于50%的变成完全不透明，并匹配色板
+                newData[i + 3] = 255;
+                
+                // 找到最接近的色板颜色
+                const closestColor = findClosestColor([r, g, b], palette);
+                newData[i] = closestColor[0];
+                newData[i + 1] = closestColor[1];
+                newData[i + 2] = closestColor[2];
+            }
+        }
+
+        return newImageData;
+    }
+
     function updatePreview() {
         if (!state.inputImage || !state.activePalette || state.activePalette.length === 0) {
             updateColorStats(null);
@@ -811,6 +863,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // 应用颜色替换
         if (state.colorReplacements.size > 0) {
             processedImageData = applyColorReplacements(processedImageData);
+        }
+
+        // 应用强制去除半透明像素
+        if (state.forceOpaqueEnabled) {
+            processedImageData = applyForceOpaque(processedImageData, state.activePalette);
         }
 
         state.processedImageData = processedImageData;
@@ -932,6 +989,14 @@ document.addEventListener('DOMContentLoaded', () => {
         state.participantCount = value;
         participantCountInput.value = value;
         updateEstimatedTime();
+    }
+
+    /**
+     * 强制去除半透明像素开关变化处理
+     */
+    function handleForceOpaqueToggleChange(e) {
+        state.forceOpaqueEnabled = e.target.checked;
+        smartUpdatePreview();
     }
 
     // ==================== 参数调整功能 ====================
