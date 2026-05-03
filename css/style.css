@@ -291,6 +291,48 @@ input[type="file"] {
     min-width: fit-content;
 }
 
+/* 实时调整开关区域 */
+.realtime-toggle-section {
+    transition: all 0.3s ease;
+}
+
+.realtime-toggle-section label {
+    user-select: none;
+}
+
+.realtime-toggle-section input[type="checkbox"] {
+    cursor: pointer;
+}
+
+#manual-generate-btn {
+    transition: all 0.2s ease;
+}
+
+#manual-generate-btn:hover {
+    background: var(--primary-hover) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+#manual-generate-btn:active {
+    transform: translateY(0);
+}
+
+@media screen and (max-width: 768px) {
+    .realtime-toggle-section {
+        padding: 0.6em !important;
+    }
+    
+    .realtime-toggle-section label span {
+        font-size: 14px;
+    }
+    
+    #manual-generate-btn {
+        min-height: 44px;
+        font-size: 15px;
+    }
+}
+
 input[type="range"] { width: 100%; }
 
 .size-inputs {
