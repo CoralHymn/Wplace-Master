@@ -34,7 +34,6 @@
 
         <div class="preview-actions" style="display: none; gap: 8px; margin-top: 12px;">
             <button id="download-btn" disabled>下载当前效果图</button>
-            <button id="edit-in-painter-btn" disabled>在绘画工具中编辑</button>
         </div>
     </div>
 
@@ -189,7 +188,10 @@
         </div>
 
         <div class="control-group">
-            <button id="export-selection-btn">导出选区</button>
+            <div style="display: flex; gap: 10px;">
+                <button id="export-selection-btn" style="flex: 1;">导出选区</button>
+                <button id="edit-in-painter-btn" disabled style="flex: 1;">在绘画工具中编辑</button>
+            </div>
         </div>
 
         <!-- 移动端footer放在功能区底部 -->
