@@ -512,6 +512,11 @@ document.addEventListener('DOMContentLoaded', () => {
         placeholderText.style.display = 'none';
         viewport.style.display = 'block';
         previewControls.style.display = 'flex';
+        
+        // 显示下载按钮容器
+        const previewActions = document.querySelector('.preview-actions');
+        if (previewActions) previewActions.style.display = 'flex';
+        
         downloadBtn.style.display = 'block';
         downloadBtn.disabled = false;
 
