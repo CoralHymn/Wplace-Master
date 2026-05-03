@@ -618,6 +618,7 @@ function handleMouseDown(e) {
     if (state.currentTool === 'fill') {
         saveState();
         floodFill(x, y, state.currentColor);
+        renderCanvas();
         return;
     }
 
@@ -743,6 +744,7 @@ function handleTouchStart(e) {
         if (state.currentTool === 'fill') {
             saveState();
             floodFill(x, y, state.currentColor);
+            renderCanvas();
             return;
         }
 
