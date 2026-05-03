@@ -266,8 +266,12 @@ input[type="file"] {
 
 .slider-group label, .size-inputs label {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 0.3em;
+}
+
+.slider-group label input[type="number"] {
+    margin-left: 0.2em;
 }
 
 input[type="range"] { width: 100%; }

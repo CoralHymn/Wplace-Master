@@ -129,9 +129,25 @@ document.addEventListener('DOMContentLoaded', () => {
         freePaletteGrid.addEventListener('click', handleSwatchClick);
         paidPaletteGrid.addEventListener('click', handleSwatchClick);
         inputFile.addEventListener('change', handleImageUpload);
+        
+        // 抖动强度 - 滑块和数字框双向绑定
         strengthSlider.addEventListener('input', handleStrengthChange);
+        const ditherStrengthInput = document.getElementById('dither-strength-value');
+        if (ditherStrengthInput) {
+            ditherStrengthInput.addEventListener('change', handleDitherStrengthInputChange);
+            ditherStrengthInput.addEventListener('input', handleDitherStrengthInputChange);
+        }
+        
         ditherScaleSelect.addEventListener('change', handleDitherScaleChange);
+        
+        // 图片尺寸 - 滑块和数字框双向绑定
         sizeSlider.addEventListener('input', handleSizeSliderChange);
+        const imageSizeInput = document.getElementById('image-size-value');
+        if (imageSizeInput) {
+            imageSizeInput.addEventListener('change', handleImageSizeInputChange);
+            imageSizeInput.addEventListener('input', handleImageSizeInputChange);
+        }
+        
         imageWidthInput.addEventListener('change', handleWidthInputChange);
         imageHeightInput.addEventListener('change', handleHeightInputChange);
         pixelCountInput.addEventListener('change', handlePixelCountChange);
@@ -174,10 +190,31 @@ document.addEventListener('DOMContentLoaded', () => {
         // 移动端可拖动分隔条
         initMobileResizer();
 
-        // 图片处理功能事件监听器（实验性功能）
-        if (brightnessSlider) brightnessSlider.addEventListener('input', handleBrightnessChange);
-        if (contrastSlider) contrastSlider.addEventListener('input', handleContrastChange);
-        if (saturationSlider) saturationSlider.addEventListener('input', handleSaturationChange);
+        // 图片处理功能事件监听器（实验性功能）- 滑块和数字框双向绑定
+        if (brightnessSlider) {
+            brightnessSlider.addEventListener('input', handleBrightnessChange);
+            const brightnessInput = document.getElementById('brightness-value');
+            if (brightnessInput) {
+                brightnessInput.addEventListener('change', handleBrightnessInputChange);
+                brightnessInput.addEventListener('input', handleBrightnessInputChange);
+            }
+        }
+        if (contrastSlider) {
+            contrastSlider.addEventListener('input', handleContrastChange);
+            const contrastInput = document.getElementById('contrast-value');
+            if (contrastInput) {
+                contrastInput.addEventListener('change', handleContrastInputChange);
+                contrastInput.addEventListener('input', handleContrastInputChange);
+            }
+        }
+        if (saturationSlider) {
+            saturationSlider.addEventListener('input', handleSaturationChange);
+            const saturationInput = document.getElementById('saturation-value');
+            if (saturationInput) {
+                saturationInput.addEventListener('change', handleSaturationInputChange);
+                saturationInput.addEventListener('input', handleSaturationInputChange);
+            }
+        }
         if (resetImageAdjustmentsBtn) resetImageAdjustmentsBtn.addEventListener('click', resetImageAdjustments);
     }
 
@@ -203,15 +240,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const inputText = document.getElementById('input-text');
         if (inputText) inputText.textContent = t.clickOrDrag;
 
-        const ditherStrengthLabel = document.querySelector('label[for="dither-strength"]');
-        if (ditherStrengthLabel) {
-            ditherStrengthLabel.innerHTML = `${t.ditherStrength}: <span id="dither-strength-value">${ditherStrengthLabel.querySelector('span').textContent}</span>`;
-        }
+        // 更新标签文本（不破坏input元素）
+        const ditherStrengthLabel = document.getElementById('dither-strength-label');
+        if (ditherStrengthLabel) ditherStrengthLabel.textContent = t.ditherStrength;
 
-        const imageSizeLabel = document.querySelector('label[for="image-size"]');
-        if (imageSizeLabel) {
-            imageSizeLabel.innerHTML = `${t.imageSize}: <span id="image-size-value">${imageSizeLabel.querySelector('span').textContent}</span>`;
-        }
+        const imageSizeLabel = document.getElementById('image-size-label');
+        if (imageSizeLabel) imageSizeLabel.textContent = t.imageSize;
+
+        const brightnessLabel = document.getElementById('brightness-label');
+        if (brightnessLabel) brightnessLabel.textContent = t.brightness || 'Brightness';
+
+        const contrastLabel = document.getElementById('contrast-label');
+        if (contrastLabel) contrastLabel.textContent = t.contrast || 'Contrast';
+
+        const saturationLabel = document.getElementById('saturation-label');
+        if (saturationLabel) saturationLabel.textContent = t.saturation || 'Saturation';
 
         const widthLabel = document.querySelector('label[for="image-width"]');
         if (widthLabel) widthLabel.textContent = t.width + ':';
@@ -244,21 +287,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // 更新图片处理相关文本（实验性功能）
         const imageProcessingTitle = document.querySelector('.experimental-section h3');
         if (imageProcessingTitle) imageProcessingTitle.textContent = t.imageProcessing || 'Image Processing (Experimental)';
-        
-        const brightnessLabel = document.querySelector('label[for="brightness"]');
-        if (brightnessLabel) {
-            brightnessLabel.innerHTML = `${t.brightness || 'Brightness'}: <span id="brightness-value">${state.brightness}%</span>`;
-        }
-        
-        const contrastLabel = document.querySelector('label[for="contrast"]');
-        if (contrastLabel) {
-            contrastLabel.innerHTML = `${t.contrast || 'Contrast'}: <span id="contrast-value">${state.contrast}%</span>`;
-        }
-        
-        const saturationLabel = document.querySelector('label[for="saturation"]');
-        if (saturationLabel) {
-            saturationLabel.innerHTML = `${t.saturation || 'Saturation'}: <span id="saturation-value">${state.saturation}%</span>`;
-        }
         
         const resetBtn = document.getElementById('reset-image-adjustments');
         if (resetBtn) resetBtn.textContent = t.resetAdjustments || 'Reset All Adjustments';
@@ -609,29 +637,74 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 处理亮度变化
+     * 处理亮度变化（滑块）
      */
     function handleBrightnessChange(e) {
         state.brightness = parseInt(e.target.value);
-        brightnessValue.textContent = state.brightness + '%';
+        const el = document.getElementById('brightness-value');
+        if (el) el.value = state.brightness;
         updatePreview();
     }
 
     /**
-     * 处理对比度变化
+     * 处理亮度变化（数字输入框）
+     */
+    function handleBrightnessInputChange(e) {
+        let value = parseInt(e.target.value, 10);
+        if (isNaN(value)) value = 0;
+        if (value < 0) value = 0;
+        if (value > 200) value = 200;
+        
+        state.brightness = value;
+        brightnessSlider.value = value;
+        updatePreview();
+    }
+
+    /**
+     * 处理对比度变化（滑块）
      */
     function handleContrastChange(e) {
         state.contrast = parseInt(e.target.value);
-        contrastValue.textContent = state.contrast + '%';
+        const el = document.getElementById('contrast-value');
+        if (el) el.value = state.contrast;
         updatePreview();
     }
 
     /**
-     * 处理饱和度变化
+     * 处理对比度变化（数字输入框）
+     */
+    function handleContrastInputChange(e) {
+        let value = parseInt(e.target.value, 10);
+        if (isNaN(value)) value = 0;
+        if (value < 0) value = 0;
+        if (value > 200) value = 200;
+        
+        state.contrast = value;
+        contrastSlider.value = value;
+        updatePreview();
+    }
+
+    /**
+     * 处理饱和度变化（滑块）
      */
     function handleSaturationChange(e) {
         state.saturation = parseInt(e.target.value);
-        saturationValue.textContent = state.saturation + '%';
+        const el = document.getElementById('saturation-value');
+        if (el) el.value = state.saturation;
+        updatePreview();
+    }
+
+    /**
+     * 处理饱和度变化（数字输入框）
+     */
+    function handleSaturationInputChange(e) {
+        let value = parseInt(e.target.value, 10);
+        if (isNaN(value)) value = 0;
+        if (value < 0) value = 0;
+        if (value > 200) value = 200;
+        
+        state.saturation = value;
+        saturationSlider.value = value;
         updatePreview();
     }
 
@@ -647,9 +720,13 @@ document.addEventListener('DOMContentLoaded', () => {
         contrastSlider.value = 100;
         saturationSlider.value = 100;
         
-        brightnessValue.textContent = '100%';
-        contrastValue.textContent = '100%';
-        saturationValue.textContent = '100%';
+        const brightnessEl = document.getElementById('brightness-value');
+        const contrastEl = document.getElementById('contrast-value');
+        const saturationEl = document.getElementById('saturation-value');
+        
+        if (brightnessEl) brightnessEl.value = 100;
+        if (contrastEl) contrastEl.value = 100;
+        if (saturationEl) saturationEl.value = 100;
         
         updatePreview();
     }
@@ -724,20 +801,59 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ==================== 参数调整功能 ====================
+    
+    /**
+     * 抖动强度滑块变化处理
+     */
     function handleStrengthChange() {
         state.ditherStrength = strengthSlider.value / 100;
-        strengthValue.textContent = `${strengthSlider.value}%`;
+        const el = document.getElementById('dither-strength-value');
+        if (el) el.value = strengthSlider.value;
+        updatePreview();
+    }
+
+    /**
+     * 抖动强度数字输入框变化处理
+     */
+    function handleDitherStrengthInputChange(e) {
+        let value = parseInt(e.target.value, 10);
+        if (isNaN(value)) value = 0;
+        if (value < 0) value = 0;
+        if (value > 100) value = 100;
+        
+        state.ditherStrength = value / 100;
+        strengthSlider.value = value;
         updatePreview();
     }
 
     function handleDitherScaleChange() {
         state.ditherScale = parseInt(ditherScaleSelect.value);
-        ditherScaleValue.textContent = `${ditherScaleSelect.value}倍`;
+        const el = document.getElementById('dither-scale-value');
+        if (el) el.textContent = `${ditherScaleSelect.value}倍`;
         updatePreview();
     }
 
+    /**
+     * 图片尺寸滑块变化处理
+     */
     function handleSizeSliderChange() {
         state.imageSize = sizeSlider.value / 100;
+        updateSizeUI();
+        updatePreview();
+        centerImage();
+    }
+
+    /**
+     * 图片尺寸数字输入框变化处理
+     */
+    function handleImageSizeInputChange(e) {
+        let value = parseInt(e.target.value, 10);
+        if (isNaN(value)) value = 10;
+        if (value < 10) value = 10;
+        if (value > 200) value = 200;
+        
+        state.imageSize = value / 100;
+        sizeSlider.value = value;
         updateSizeUI();
         updatePreview();
         centerImage();
@@ -791,7 +907,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const newHeight = Math.round(state.originalHeight * state.imageSize);
 
         sizeSlider.value = Math.round(state.imageSize * 100);
-        sizeValue.textContent = `${sizeSlider.value}%`;
+        const sizeValueEl = document.getElementById('image-size-value');
+        if (sizeValueEl) sizeValueEl.textContent = `${sizeSlider.value}%`;
+        
         imageWidthInput.value = newWidth;
         imageHeightInput.value = newHeight;
         pixelCountInput.value = newWidth * newHeight;
@@ -807,7 +925,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleZoomSlider() {
         state.zoom = zoomSlider.value / 100;
-        zoomValue.textContent = `${zoomSlider.value}%`;
+        const zoomValueEl = document.getElementById('zoom-value');
+        if (zoomValueEl) zoomValueEl.textContent = `${zoomSlider.value}%`;
         updateTransform();
         centerImage();
     }
@@ -828,7 +947,8 @@ document.addEventListener('DOMContentLoaded', () => {
         state.panY = mouseY - (mouseY - state.panY) * (state.zoom / oldZoom);
 
         zoomSlider.value = Math.round(state.zoom * 100);
-        zoomValue.textContent = `${zoomSlider.value}%`;
+        const zoomValueEl = document.getElementById('zoom-value');
+        if (zoomValueEl) zoomValueEl.textContent = `${zoomSlider.value}%`;
         updateTransform();
     }
 
@@ -882,7 +1002,8 @@ document.addEventListener('DOMContentLoaded', () => {
         state.panX = 0;
         state.panY = 0;
         zoomSlider.value = 100;
-        zoomValue.textContent = '100%';
+        const zoomValueEl = document.getElementById('zoom-value');
+        if (zoomValueEl) zoomValueEl.textContent = '100%';
         updateTransform();
     }
 
@@ -1644,7 +1765,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 更新缩放滑块
             zoomSlider.value = Math.round(state.zoom * 100);
-            zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
+            const zoomValueEl = document.getElementById('zoom-value');
+            if (zoomValueEl) zoomValueEl.textContent = `${Math.round(state.zoom * 100)}%`;
 
             touchState.lastDistance = currentDistance;
             updateTransform();
