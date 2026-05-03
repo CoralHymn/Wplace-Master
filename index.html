@@ -101,6 +101,29 @@
             <div class="size-inputs" style="margin-top: 0.5em;">
                 <div><label for="pixel-count">总像素:</label><input type="number" id="pixel-count" min="10" max="1000000"></div>
             </div>
+
+            <!-- 实验性图片处理功能 -->
+            <div class="experimental-section" style="margin-top: 1em; padding: 0.8em; background: #f8f9fa; border-radius: 6px; border-left: 3px solid #ff9800;">
+                <div style="display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.8em;">
+                    <h3 style="margin: 0; font-size: 1em;">图片处理（实验性）</h3>
+                    <span style="background: #ff9800; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.7em; font-weight: bold;">BETA</span>
+                </div>
+                <p style="font-size: 0.8em; color: #666; margin: 0 0 0.8em 0;">调整图片的亮度、对比度和饱和度</p>
+
+                <div class="slider-group">
+                    <label for="brightness">亮度: <span id="brightness-value">100%</span></label>
+                    <input type="range" id="brightness" min="0" max="200" value="100">
+                </div>
+                <div class="slider-group">
+                    <label for="contrast">对比度: <span id="contrast-value">100%</span></label>
+                    <input type="range" id="contrast" min="0" max="200" value="100">
+                </div>
+                <div class="slider-group">
+                    <label for="saturation">饱和度: <span id="saturation-value">100%</span></label>
+                    <input type="range" id="saturation" min="0" max="200" value="100">
+                </div>
+                <button id="reset-image-adjustments" style="width: 100%; margin-top: 0.5em; padding: 0.5em; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer;">重置所有调整</button>
+            </div>
         </div>
 
         <div class="control-group">

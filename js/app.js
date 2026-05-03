@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
         activePalette: [],
         quantizedPalette: [],
         inputImage: null,
+        processedInputImage: null, // 存储经过亮度/对比度/饱和度处理后的图片
         originalWidth: 0,
         originalHeight: 0,
         aspectRatio: 1,
@@ -37,7 +38,11 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedSourceColor: null,
         selectedReplacementColor: null,
         colorReplacements: new Map(), // 存储颜色替换映射
-        activeReplacementTab: 'free'
+        activeReplacementTab: 'free',
+        // 图片处理参数（实验性功能）
+        brightness: 100,
+        contrast: 100,
+        saturation: 100
     };
 
     // --- DOM Elements ---
@@ -65,6 +70,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const previewControls = document.querySelector('.preview-controls');
     const zoomSlider = document.getElementById('zoom-slider');
     const zoomValue = document.getElementById('zoom-value');
+
+    // 图片处理相关DOM元素（实验性功能）
+    const brightnessSlider = document.getElementById('brightness');
+    const contrastSlider = document.getElementById('contrast');
+    const saturationSlider = document.getElementById('saturation');
+    const brightnessValue = document.getElementById('brightness-value');
+    const contrastValue = document.getElementById('contrast-value');
+    const saturationValue = document.getElementById('saturation-value');
+    const resetImageAdjustmentsBtn = document.getElementById('reset-image-adjustments');
 
     // 颜色选择和替换相关DOM元素
     const colorPickerModeCheckbox = document.getElementById('color-picker-mode');
@@ -159,6 +173,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 移动端可拖动分隔条
         initMobileResizer();
+
+        // 图片处理功能事件监听器（实验性功能）
+        if (brightnessSlider) brightnessSlider.addEventListener('input', handleBrightnessChange);
+        if (contrastSlider) contrastSlider.addEventListener('input', handleContrastChange);
+        if (saturationSlider) saturationSlider.addEventListener('input', handleSaturationChange);
+        if (resetImageAdjustmentsBtn) resetImageAdjustmentsBtn.addEventListener('click', resetImageAdjustments);
     }
 
     // ==================== 多语言功能 ====================
@@ -220,6 +240,28 @@ document.addEventListener('DOMContentLoaded', () => {
         if (colorStatsContainer && colorStatsContainer.querySelector('p')) {
             colorStatsContainer.innerHTML = `<p>${t.processImageFirst}</p>`;
         }
+
+        // 更新图片处理相关文本（实验性功能）
+        const imageProcessingTitle = document.querySelector('.experimental-section h3');
+        if (imageProcessingTitle) imageProcessingTitle.textContent = t.imageProcessing || 'Image Processing (Experimental)';
+        
+        const brightnessLabel = document.querySelector('label[for="brightness"]');
+        if (brightnessLabel) {
+            brightnessLabel.innerHTML = `${t.brightness || 'Brightness'}: <span id="brightness-value">${state.brightness}%</span>`;
+        }
+        
+        const contrastLabel = document.querySelector('label[for="contrast"]');
+        if (contrastLabel) {
+            contrastLabel.innerHTML = `${t.contrast || 'Contrast'}: <span id="contrast-value">${state.contrast}%</span>`;
+        }
+        
+        const saturationLabel = document.querySelector('label[for="saturation"]');
+        if (saturationLabel) {
+            saturationLabel.innerHTML = `${t.saturation || 'Saturation'}: <span id="saturation-value">${state.saturation}%</span>`;
+        }
+        
+        const resetBtn = document.getElementById('reset-image-adjustments');
+        if (resetBtn) resetBtn.textContent = t.resetAdjustments || 'Reset All Adjustments';
 
         updateSelectAllButtons();
     }
@@ -455,6 +497,163 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ==================== 图片处理功能（实验性）====================
+    
+    /**
+     * 调整亮度
+     * @param {ImageData} imageData - 原始图像数据
+     * @param {number} brightness - 亮度百分比 (0-200)
+     */
+    function adjustBrightness(imageData, brightness) {
+        const data = imageData.data;
+        const factor = brightness / 100;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            data[i] = Math.min(255, Math.max(0, data[i] * factor));     // R
+            data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor)); // G
+            data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor)); // B
+        }
+        
+        return imageData;
+    }
+
+    /**
+     * 调整对比度
+     * @param {ImageData} imageData - 原始图像数据
+     * @param {number} contrast - 对比度百分比 (0-200)
+     */
+    function adjustContrast(imageData, contrast) {
+        const data = imageData.data;
+        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+        
+        for (let i = 0; i < data.length; i += 4) {
+            data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));     // R
+            data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128)); // G
+            data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128)); // B
+        }
+        
+        return imageData;
+    }
+
+    /**
+     * 调整饱和度
+     * @param {ImageData} imageData - 原始图像数据
+     * @param {number} saturation - 饱和度百分比 (0-200)
+     */
+    function adjustSaturation(imageData, saturation) {
+        const data = imageData.data;
+        const factor = saturation / 100;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            
+            // 计算灰度值
+            const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
+            
+            // 应用饱和度调整
+            data[i] = Math.min(255, Math.max(0, gray + (r - gray) * factor));     // R
+            data[i + 1] = Math.min(255, Math.max(0, gray + (g - gray) * factor)); // G
+            data[i + 2] = Math.min(255, Math.max(0, gray + (b - gray) * factor)); // B
+        }
+        
+        return imageData;
+    }
+
+    /**
+     * 应用所有图片处理效果
+     * @param {HTMLImageElement} img - 原始图片
+     * @returns {ImageData} 处理后的图像数据
+     */
+    function applyImageAdjustments(img) {
+        // 创建临时canvas
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = img.width;
+        tempCanvas.height = img.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        // 绘制原始图片
+        tempCtx.drawImage(img, 0, 0);
+        
+        // 获取图像数据
+        let imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // 按顺序应用调整：亮度 -> 对比度 -> 饱和度
+        imageData = adjustBrightness(imageData, state.brightness);
+        imageData = adjustContrast(imageData, state.contrast);
+        imageData = adjustSaturation(imageData, state.saturation);
+        
+        return imageData;
+    }
+
+    /**
+     * 将处理后的图像数据转换回Image对象
+     * @param {ImageData} imageData - 处理后的图像数据
+     * @param {number} width - 宽度
+     * @param {number} height - 高度
+     * @returns {Promise<HTMLImageElement>} 处理后的图片
+     */
+    function imageDataToImage(imageData, width, height) {
+        return new Promise((resolve) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.putImageData(imageData, 0, 0);
+            
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.src = canvas.toDataURL('image/png');
+        });
+    }
+
+    /**
+     * 处理亮度变化
+     */
+    function handleBrightnessChange(e) {
+        state.brightness = parseInt(e.target.value);
+        brightnessValue.textContent = state.brightness + '%';
+        updatePreview();
+    }
+
+    /**
+     * 处理对比度变化
+     */
+    function handleContrastChange(e) {
+        state.contrast = parseInt(e.target.value);
+        contrastValue.textContent = state.contrast + '%';
+        updatePreview();
+    }
+
+    /**
+     * 处理饱和度变化
+     */
+    function handleSaturationChange(e) {
+        state.saturation = parseInt(e.target.value);
+        saturationValue.textContent = state.saturation + '%';
+        updatePreview();
+    }
+
+    /**
+     * 重置所有图片调整
+     */
+    function resetImageAdjustments() {
+        state.brightness = 100;
+        state.contrast = 100;
+        state.saturation = 100;
+        
+        brightnessSlider.value = 100;
+        contrastSlider.value = 100;
+        saturationSlider.value = 100;
+        
+        brightnessValue.textContent = '100%';
+        contrastValue.textContent = '100%';
+        saturationValue.textContent = '100%';
+        
+        updatePreview();
+    }
+
     function findClosestColor(color, palette) {
         let minDistance = Infinity;
         let closestColor = palette[0];
@@ -479,16 +678,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
         previewCanvas.width = newWidth;
         previewCanvas.height = newHeight;
-        previewCtx.drawImage(state.inputImage, 0, 0, newWidth, newHeight);
 
-        const imageData = previewCtx.getImageData(0, 0, newWidth, newHeight);
+        // 应用图片处理（亮度、对比度、饱和度）
+        let sourceImageData;
+        if (state.brightness !== 100 || state.contrast !== 100 || state.saturation !== 100) {
+            // 先调整原始图片
+            const adjustedImageData = applyImageAdjustments(state.inputImage);
+            // 将调整后的数据绘制到canvas并缩放
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = state.inputImage.width;
+            tempCanvas.height = state.inputImage.height;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.putImageData(adjustedImageData, 0, 0);
+            
+            previewCtx.drawImage(tempCanvas, 0, 0, newWidth, newHeight);
+            sourceImageData = previewCtx.getImageData(0, 0, newWidth, newHeight);
+        } else {
+            // 没有调整，直接绘制
+            previewCtx.drawImage(state.inputImage, 0, 0, newWidth, newHeight);
+            sourceImageData = previewCtx.getImageData(0, 0, newWidth, newHeight);
+        }
+
         const algo = ALGORITHMS[state.activeAlgorithm];
         let processedImageData;
 
         if (algo.type === 'error') {
-            processedImageData = applyErrorDither(imageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked);
+            processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked);
         } else if (algo.type === 'ordered') {
-            processedImageData = applyOrderedDither(imageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked);
+            processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked);
         }
 
         // 应用颜色替换
