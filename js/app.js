@@ -506,9 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadBtn.disabled = false;
 
         // 启用绘画工具编辑按钮
-        const previewActions = document.querySelector('.preview-actions');
         const editInPainterBtn = document.getElementById('edit-in-painter-btn');
-        if (previewActions) previewActions.style.display = 'flex';
         if (editInPainterBtn) editInPainterBtn.disabled = false;
 
         updateSizeUI();

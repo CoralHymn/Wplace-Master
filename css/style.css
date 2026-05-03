@@ -998,7 +998,8 @@ footer a:hover { text-decoration: underline; }
 
 @media screen and (max-width: 768px) {
     /* 导出按钮优化 */
-    #export-selection-btn {
+    #export-selection-btn,
+    #edit-in-painter-btn {
         width: 100%;
         min-height: 44px;
         padding: 0.7em 1em;
