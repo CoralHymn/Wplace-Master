@@ -318,6 +318,22 @@ input[type="file"] {
     transform: translateY(0);
 }
 
+/* 参与人数输入框样式 */
+#participant-count {
+    transition: border-color 0.2s;
+}
+
+#participant-count:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+/* 预计时间显示样式 */
+#estimated-time {
+    transition: color 0.3s;
+}
+
 @media screen and (max-width: 768px) {
     .realtime-toggle-section {
         padding: 0.6em !important;
@@ -330,6 +346,27 @@ input[type="file"] {
     #manual-generate-btn {
         min-height: 44px;
         font-size: 15px;
+    }
+
+    /* 图像颜色统计头部移动端优化 */
+    .control-group > div:first-child {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 0.5em;
+    }
+
+    .control-group > div:first-child > div:last-child {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    #participant-count {
+        min-height: 36px;
+        font-size: 14px;
+    }
+
+    #estimated-time {
+        font-size: 13px;
     }
 }
 

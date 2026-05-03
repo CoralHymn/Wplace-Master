@@ -138,7 +138,18 @@
         </div>
 
         <div class="control-group">
-            <h2>图像颜色统计</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5em;">
+                <h2 style="margin: 0; border: none; padding: 0;">图像颜色统计</h2>
+                <div style="display: flex; align-items: center; gap: 1em; font-size: 0.9em;">
+                    <div style="display: flex; align-items: center; gap: 0.5em;">
+                        <label for="participant-count" style="margin: 0; font-weight: normal;">参与人数:</label>
+                        <input type="number" id="participant-count" min="1" max="100" value="1" style="width: 60px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px;">
+                    </div>
+                    <div id="estimated-time" style="color: var(--primary-color); font-weight: 500; white-space: nowrap;">
+                        预计时间: --
+                    </div>
+                </div>
+            </div>
             <div id="color-stats-container">
                 <p>处理图片后在此显示颜色用量。</p>
             </div>
