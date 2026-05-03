@@ -49,7 +49,14 @@ const LANGUAGE_CONFIG = {
             currentReplacements: "当前替换映射",
             noReplacements: "暂无颜色替换",
             remove: "删除",
-            clickImageToSelectColor: "点击图像选择颜色"
+            clickImageToSelectColor: "点击图像选择颜色",
+            // 实验性图片处理功能
+            imageProcessing: "图片处理（实验性）",
+            brightness: "亮度",
+            contrast: "对比度",
+            saturation: "饱和度",
+            resetAdjustments: "重置所有调整",
+            imageProcessingDesc: "调整图片的亮度、对比度和饱和度"
         },
         ru: {
             title: "Лучший конвертер цветов Wplace",
@@ -87,7 +94,14 @@ const LANGUAGE_CONFIG = {
             currentReplacements: "Текущие замены",
             noReplacements: "Нет замен цветов",
             remove: "Удалить",
-            clickImageToSelectColor: "Нажмите на изображение для выбора цвета"
+            clickImageToSelectColor: "Нажмите на изображение для выбора цвета",
+            // 实验性图片处理功能
+            imageProcessing: "Обработка изображения (экспериментально)",
+            brightness: "Яркость",
+            contrast: "Контрастность",
+            saturation: "Насыщенность",
+            resetAdjustments: "Сбросить все настройки",
+            imageProcessingDesc: "Настройте яркость, контрастность и насыщенность изображения"
         },
         en: {
             title: "Better Wplace Color Converter",
@@ -125,7 +139,14 @@ const LANGUAGE_CONFIG = {
             currentReplacements: "Current Replacements",
             noReplacements: "No color replacements",
             remove: "Remove",
-            clickImageToSelectColor: "Click image to select color"
+            clickImageToSelectColor: "Click image to select color",
+            // 实验性图片处理功能
+            imageProcessing: "Image Processing (Experimental)",
+            brightness: "Brightness",
+            contrast: "Contrast",
+            saturation: "Saturation",
+            resetAdjustments: "Reset All Adjustments",
+            imageProcessingDesc: "Adjust brightness, contrast and saturation of the image"
         },
         ja: {
             title: "より良いWplace色変換器",
@@ -163,7 +184,14 @@ const LANGUAGE_CONFIG = {
             currentReplacements: "現在の置換マッピング",
             noReplacements: "色の置換はありません",
             remove: "削除",
-            clickImageToSelectColor: "画像をクリックして色を選択"
+            clickImageToSelectColor: "画像をクリックして色を選択",
+            // 实验性图片处理功能
+            imageProcessing: "画像処理（実験的）",
+            brightness: "明るさ",
+            contrast: "コントラスト",
+            saturation: "彩度",
+            resetAdjustments: "すべての調整をリセット",
+            imageProcessingDesc: "画像の明るさ、コントラスト、彩度を調整します"
         }
     }
 };
