@@ -44,7 +44,9 @@ document.addEventListener('DOMContentLoaded', () => {
         contrast: 100,
         saturation: 100,
         // 实时调整开关
-        realtimeEnabled: true
+        realtimeEnabled: true,
+        // 参与人数
+        participantCount: 1
     };
 
     // --- DOM Elements ---
@@ -98,6 +100,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 实时调整开关相关DOM元素
     const realtimeToggle = document.getElementById('realtime-toggle');
     const manualGenerateBtn = document.getElementById('manual-generate-btn');
+
+    // 预计完成时间相关DOM元素
+    const participantCountInput = document.getElementById('participant-count');
+    const estimatedTimeDisplay = document.getElementById('estimated-time');
 
     // 像素悬浮提示框相关变量
     let pixelTooltip = null;
@@ -174,6 +180,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // 实时调整开关事件监听器
         realtimeToggle.addEventListener('change', handleRealtimeToggleChange);
         manualGenerateBtn.addEventListener('click', handleManualGenerate);
+
+        // 参与人数变化事件监听器
+        participantCountInput.addEventListener('change', handleParticipantCountChange);
+        participantCountInput.addEventListener('input', handleParticipantCountChange);
 
         // 颜色选择和替换功能事件监听器
         colorPickerModeCheckbox.addEventListener('change', handleColorPickerModeToggle);
@@ -811,6 +821,7 @@ document.addEventListener('DOMContentLoaded', () => {
         previewCtx.putImageData(processedImageData, 0, 0);
         updateTransform();
         updateColorStats(processedImageData);
+        updateEstimatedTime();
     }
 
     /**
@@ -843,6 +854,84 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function handleManualGenerate() {
         updatePreview();
+    }
+
+    /**
+     * 计算预计完成时间
+     * @param {ImageData} imageData - 图像数据
+     * @returns {string} 格式化的时间字符串
+     */
+    function calculateEstimatedTime(imageData) {
+        if (!imageData || !state.inputImage) {
+            return '--';
+        }
+
+        // 计算非空白像素数量
+        const data = imageData.data;
+        let nonBlankPixels = 0;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const a = data[i + 3];
+            
+            // 排除完全透明的像素和纯白色背景（可根据需要调整）
+            if (a > 0 && !(r === 255 && g === 255 && b === 255)) {
+                nonBlankPixels++;
+            }
+        }
+
+        if (nonBlankPixels === 0) {
+            return '--';
+        }
+
+        // 每个像素30秒，除以参与人数
+        const totalSeconds = (nonBlankPixels * 30) / state.participantCount;
+        
+        // 格式化时间
+        return formatTime(totalSeconds);
+    }
+
+    /**
+     * 格式化时间为可读字符串
+     * @param {number} seconds - 总秒数
+     * @returns {string} 格式化的时间字符串
+     */
+    function formatTime(seconds) {
+        if (seconds < 60) {
+            return `${Math.ceil(seconds)}秒`;
+        } else if (seconds < 3600) {
+            const minutes = Math.ceil(seconds / 60);
+            return `${minutes}分钟`;
+        } else if (seconds < 86400) {
+            const hours = Math.ceil(seconds / 3600);
+            return `${hours}小时`;
+        } else {
+            const days = Math.ceil(seconds / 86400);
+            return `${days}天`;
+        }
+    }
+
+    /**
+     * 更新预计完成时间显示
+     */
+    function updateEstimatedTime() {
+        const timeText = calculateEstimatedTime(state.processedImageData);
+        estimatedTimeDisplay.textContent = `预计时间: ${timeText}`;
+    }
+
+    /**
+     * 参与人数变化处理
+     */
+    function handleParticipantCountChange(e) {
+        let value = parseInt(e.target.value, 10);
+        if (isNaN(value) || value < 1) value = 1;
+        if (value > 100) value = 100;
+        
+        state.participantCount = value;
+        participantCountInput.value = value;
+        updateEstimatedTime();
     }
 
     // ==================== 参数调整功能 ====================
