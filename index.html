@@ -96,7 +96,7 @@
                 <input type="range" id="dither-strength" min="0" max="100" value="100">
             </div>
             <div class="slider-group">
-                <label for="dither-scale">抖动倍率: <span id="dither-scale-value">1倍</span></label>
+                <label for="dither-scale"><span id="dither-scale-label">抖动倍率</span>: <span id="dither-scale-value">1倍</span></label>
                 <select id="dither-scale">
                     <option value="1">1倍</option>
                     <option value="2">2倍</option>
@@ -118,10 +118,10 @@
             <!-- 实验性图片处理功能 -->
             <div class="experimental-section" style="margin-top: 1em; padding: 0.8em; background: #f8f9fa; border-radius: 6px; border-left: 3px solid #ff9800;">
                 <div style="display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.8em;">
-                    <h3 style="margin: 0; font-size: 1em;">图片处理（实验性）</h3>
+                    <h3 id="image-processing-title" style="margin: 0; font-size: 1em;">图片处理（实验性）</h3>
                     <span style="background: #ff9800; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.7em; font-weight: bold;">BETA</span>
                 </div>
-                <p style="font-size: 0.8em; color: #666; margin: 0 0 0.8em 0;">调整图片的亮度、对比度和饱和度</p>
+                <p id="image-processing-desc" style="font-size: 0.8em; color: #666; margin: 0 0 0.8em 0;">调整图片的亮度、对比度和饱和度</p>
 
                 <div class="slider-group">
                     <label for="brightness"><span id="brightness-label">亮度</span><input type="number" id="brightness-value" min="0" max="200" value="100" style="width: 60px; padding: 2px 4px;">%</label>
@@ -214,8 +214,8 @@
 
         <div class="control-group">
             <div style="display: flex; gap: 10px;">
-                <button id="export-selection-btn" style="flex: 1;">导出选区</button>
-                <button id="edit-in-painter-btn" disabled style="flex: 1;">在绘画工具中编辑</button>
+                <button id="export-selection-btn" style="flex: 1;"><span id="export-selection-label">导出选区</span></button>
+                <button id="edit-in-painter-btn" disabled style="flex: 1;"><span id="edit-in-painter-label">在绘画工具中编辑</span></button>
             </div>
         </div>
 
@@ -252,7 +252,7 @@
 <div style="position: fixed; top: 20px; left: 20px; z-index: 1000;">
     <a href="pixel-draw.html" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 500; box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: transform 0.2s;">
         <span style="font-size: 18px;">🎨</span>
-        <span>像素绘画工具</span>
+        <span id="pixel-paint-tool-label">像素绘画工具</span>
     </a>
 </div>
 
