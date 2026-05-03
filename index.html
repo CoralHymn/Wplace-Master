@@ -146,7 +146,7 @@
 
         <div class="control-group">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5em;">
-                <h2 style="margin: 0; border: none; padding: 0;">图像颜色统计</h2>
+                <h2 id="color-stats-title" style="margin: 0; border: none; padding: 0;">图像颜色统计</h2>
                 <div style="display: flex; align-items: center; gap: 1em; font-size: 0.9em;">
                     <div style="display: flex; align-items: center; gap: 0.5em;">
                         <label for="participant-count" style="margin: 0; font-weight: normal;">参与人数:</label>
@@ -164,7 +164,7 @@
         <div class="control-group">
             <label>
                 <input type="checkbox" id="lock-colors-checkbox">
-                锁定颜色
+                <span id="lock-colors-label">锁定颜色</span>
             </label>
         </div>
 
@@ -174,7 +174,7 @@
                 <div class="color-picker-mode">
                     <label>
                         <input type="checkbox" id="color-picker-mode">
-                        启用颜色选择模式
+                        <span id="color-picker-label">启用颜色选择模式</span>
                     </label>
                     <p class="mode-description">启用后，点击图像可选择要替换的颜色</p>
                 </div>
@@ -240,11 +240,11 @@
 
 <!-- 多语言选择器 -->
 <div id="language-selector" style="position: fixed; top: 20px; right: 20px; z-index: 1000; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <select id="language-select" style="border: 1px solid #ddd; padding: 5px; border-radius: 4px;">
-        <option value="zh">中文</option>
-        <option value="ru">Русский</option>
-        <option value="en">English</option>
-        <option value="ja">日本語</option>
+    <select id="language-select" style="border: 1px solid #ddd; padding: 5px; border-radius: 4px; font-size: 16px; cursor: pointer;">
+        <option value="zh">🇨🇳 中文</option>
+        <option value="ru">🇷🇺 Русский</option>
+        <option value="en">🇬🇧 English</option>
+        <option value="ja">🇯🇵 日本語</option>
     </select>
 </div>
 

@@ -259,7 +259,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (h2Elements[1]) h2Elements[1].textContent = t.uploadImage;
         if (h2Elements[2]) h2Elements[2].textContent = t.adjustParams;
         if (h2Elements[3]) h2Elements[3].textContent = t.selectAlgorithm;
-        if (h2Elements[4]) h2Elements[4].textContent = t.colorStats;
+
+        const colorStatsTitle = document.getElementById('color-stats-title');
+        if (colorStatsTitle) colorStatsTitle.textContent = t.colorStats;
 
         const paletteTitles = document.querySelectorAll('.palette-title');
         if (paletteTitles[0]) paletteTitles[0].textContent = t.freePalette;
@@ -318,6 +320,59 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const resetBtn = document.getElementById('reset-image-adjustments');
         if (resetBtn) resetBtn.textContent = t.resetAdjustments || 'Reset All Adjustments';
+
+        // 更新实时调整开关文本
+        const realtimeToggleLabel = document.querySelector('#realtime-toggle + span');
+        if (realtimeToggleLabel) realtimeToggleLabel.textContent = t.realtimeToggle || 'Enable Real-time Adjustment';
+        
+        const manualGenerateBtnEl = document.getElementById('manual-generate-btn');
+        if (manualGenerateBtnEl) manualGenerateBtnEl.textContent = t.manualGenerateBtn || 'Generate Image';
+
+        // 更新强制去除半透明像素开关文本
+        const forceOpaqueLabel = document.querySelector('#force-opaque-toggle + span');
+        if (forceOpaqueLabel) forceOpaqueLabel.textContent = t.forceOpaqueToggle || 'Force Remove Semi-transparent Pixels';
+        
+        const forceOpaqueDesc = document.querySelector('#force-opaque-toggle').parentElement.nextElementSibling;
+        if (forceOpaqueDesc) forceOpaqueDesc.textContent = t.forceOpaqueDesc || 'On: opacity <50% becomes transparent, >=50% becomes opaque';
+
+        // 更新预计完成时间相关文本
+        const participantCountLabel = document.querySelector('label[for="participant-count"]');
+        if (participantCountLabel) participantCountLabel.textContent = (t.participantCount || 'Participants') + ':';
+
+        // 更新颜色选择与替换相关文本
+        const lockColorsLabel = document.getElementById('lock-colors-label');
+        if (lockColorsLabel) lockColorsLabel.textContent = t.lockColors || 'Lock Colors';
+
+        const h2Fifth = document.querySelectorAll('h2')[4];
+        if (h2Fifth) h2Fifth.textContent = t.colorSelection || '5. Color Selection and Replacement';
+
+        const colorPickerLabel = document.getElementById('color-picker-label');
+        if (colorPickerLabel) colorPickerLabel.textContent = t.enableColorPicker || 'Enable Color Picker Mode';
+
+        const modeDescription = document.querySelector('.mode-description');
+        if (modeDescription) modeDescription.textContent = t.clickImageToSelectColor || 'Click image to select color';
+
+        const selectedColorSpan = document.querySelector('.selected-color-info > span:first-child');
+        if (selectedColorSpan) selectedColorSpan.textContent = (t.selectedColor || 'Selected Color') + ':';
+
+        // 更新"未选择"文本（如果当前没有选择颜色）
+        if (selectedColorName && !state.selectedSourceColor) {
+            selectedColorName.textContent = t.notSelected || 'Not Selected';
+        }
+
+        const replacementTitle = document.querySelector('.replacement-color-section h3');
+        if (replacementTitle) replacementTitle.textContent = t.replacementColor || 'Replacement Color';
+
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        if (tabButtons[0]) tabButtons[0].textContent = t.freeColors || 'Free Colors';
+        if (tabButtons[1]) tabButtons[1].textContent = t.paidColors || 'Paid Colors';
+
+        if (applyReplacementBtn) applyReplacementBtn.textContent = t.applyReplacement || 'Apply Replacement';
+        if (clearReplacementBtn) clearReplacementBtn.textContent = t.clearSelection || 'Clear Selection';
+        if (resetAllReplacementsBtn) resetAllReplacementsBtn.textContent = t.resetAllReplacements || 'Reset All Replacements';
+
+        const replacementListTitle = document.querySelector('.replacement-list h3');
+        if (replacementListTitle) replacementListTitle.textContent = t.currentReplacements || 'Current Replacements';
 
         updateSelectAllButtons();
     }
@@ -975,7 +1030,8 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function updateEstimatedTime() {
         const timeText = calculateEstimatedTime(state.processedImageData);
-        estimatedTimeDisplay.textContent = `预计时间: ${timeText}`;
+        const t = TRANSLATIONS[currentLanguage];
+        estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${timeText}`;
     }
 
     /**
@@ -1552,7 +1608,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateReplacementList() {
         if (state.colorReplacements.size === 0) {
-            replacementItems.innerHTML = '<p class="no-replacements">暂无颜色替换</p>';
+            const t = TRANSLATIONS[currentLanguage];
+            replacementItems.innerHTML = `<p class="no-replacements">${t.noReplacements || 'No color replacements'}</p>`;
             return;
         }
 
@@ -1590,7 +1647,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="color-preview" style="background-color: ${replacementColorKey};"></div>
                     <span>${replacementDisplayName}</span>
                 </div>
-                <button class="remove-replacement-btn" data-source="${sourceColorStr}">删除</button>
+                <button class="remove-replacement-btn" data-source="${sourceColorStr}">${t.remove || 'Remove'}</button>
             `;
 
             const removeBtn = item.querySelector('.remove-replacement-btn');

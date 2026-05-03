@@ -339,6 +339,18 @@ input[type="file"] {
     transition: color 0.3s;
 }
 
+/* 语言选择器优化 */
+#language-selector select {
+    font-size: 16px;
+    cursor: pointer;
+    min-width: 120px;
+}
+
+#language-selector select option {
+    font-size: 15px;
+    padding: 4px;
+}
+
 @media screen and (max-width: 768px) {
     .realtime-toggle-section {
         padding: 0.6em !important;
@@ -1154,6 +1166,12 @@ footer a:hover { text-decoration: underline; }
         right: 5px;
         padding: 5px;
         box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    }
+
+    #language-selector select {
+        font-size: 14px;
+        min-width: 100px;
+        padding: 4px;
     }
 
     /* 抖动算法选择器横向滚动 */

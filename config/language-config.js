@@ -56,7 +56,20 @@ const LANGUAGE_CONFIG = {
             contrast: "对比度",
             saturation: "饱和度",
             resetAdjustments: "重置所有调整",
-            imageProcessingDesc: "调整图片的亮度、对比度和饱和度"
+            imageProcessingDesc: "调整图片的亮度、对比度和饱和度",
+            // 实时调整开关
+            realtimeToggle: "开启实时调整",
+            manualGenerateBtn: "生成图片",
+            // 强制去除半透明像素
+            forceOpaqueToggle: "强制去除半透明像素",
+            forceOpaqueDesc: "开启后：透明度<50%变透明，>=50%变不透明并匹配色板",
+            // 预计完成时间
+            participantCount: "参与人数",
+            estimatedTime: "预计时间",
+            // 颜色选择与替换
+            lockColors: "锁定颜色",
+            colorSelection: "5. 颜色选择与替换",
+            notSelected: "未选择"
         },
         ru: {
             title: "Лучший конвертер цветов Wplace",
@@ -101,7 +114,20 @@ const LANGUAGE_CONFIG = {
             contrast: "Контрастность",
             saturation: "Насыщенность",
             resetAdjustments: "Сбросить все настройки",
-            imageProcessingDesc: "Настройте яркость, контрастность и насыщенность изображения"
+            imageProcessingDesc: "Настройте яркость, контрастность и насыщенность изображения",
+            // 实时调整开关
+            realtimeToggle: "Включить реальное время",
+            manualGenerateBtn: "Сгенерировать изображение",
+            // 强制去除半透明像素
+            forceOpaqueToggle: "Принудительно удалить полупрозрачные пиксели",
+            forceOpaqueDesc: "Вкл: прозрачность <50% станет прозрачной, >=50% станет непрозрачной",
+            // 预计完成时间
+            participantCount: "Участников",
+            estimatedTime: "Расчетное время",
+            // 颜色选择与替换
+            lockColors: "Блокировать цвета",
+            colorSelection: "5. Выбор и замена цветов",
+            notSelected: "Не выбрано"
         },
         en: {
             title: "Better Wplace Color Converter",
@@ -146,7 +172,20 @@ const LANGUAGE_CONFIG = {
             contrast: "Contrast",
             saturation: "Saturation",
             resetAdjustments: "Reset All Adjustments",
-            imageProcessingDesc: "Adjust brightness, contrast and saturation of the image"
+            imageProcessingDesc: "Adjust brightness, contrast and saturation of the image",
+            // 实时调整开关
+            realtimeToggle: "Enable Real-time Adjustment",
+            manualGenerateBtn: "Generate Image",
+            // 强制去除半透明像素
+            forceOpaqueToggle: "Force Remove Semi-transparent Pixels",
+            forceOpaqueDesc: "On: opacity <50% becomes transparent, >=50% becomes opaque",
+            // 预计完成时间
+            participantCount: "Participants",
+            estimatedTime: "Estimated Time",
+            // 颜色选择与替换
+            lockColors: "Lock Colors",
+            colorSelection: "5. Color Selection and Replacement",
+            notSelected: "Not Selected"
         },
         ja: {
             title: "より良いWplace色変換器",
@@ -191,7 +230,20 @@ const LANGUAGE_CONFIG = {
             contrast: "コントラスト",
             saturation: "彩度",
             resetAdjustments: "すべての調整をリセット",
-            imageProcessingDesc: "画像の明るさ、コントラスト、彩度を調整します"
+            imageProcessingDesc: "画像の明るさ、コントラスト、彩度を調整します",
+            // 实时调整开关
+            realtimeToggle: "リアルタイム調整を有効にする",
+            manualGenerateBtn: "画像を生成",
+            // 强制去除半透明像素
+            forceOpaqueToggle: "半透明ピクセルを強制削除",
+            forceOpaqueDesc: "オン: 透明度<50%は透明に、>=50%は不透明になります",
+            // 预计完成时间
+            participantCount: "参加者数",
+            estimatedTime: "予想時間",
+            // 颜色选择与替换
+            lockColors: "色をロック",
+            colorSelection: "5. 色の選択と置換",
+            notSelected: "未選択"
         }
     }
 };
