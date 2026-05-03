@@ -79,7 +79,7 @@
         <div class="control-group">
             <h2>3. 调整参数</h2>
             <div class="slider-group">
-                <label for="dither-strength">抖动强度: <span id="dither-strength-value">100%</span></label>
+                <label for="dither-strength"><span id="dither-strength-label">抖动强度</span>: <input type="number" id="dither-strength-value" min="0" max="100" value="100" style="width: 60px; padding: 2px 4px;">%</label>
                 <input type="range" id="dither-strength" min="0" max="100" value="100">
             </div>
             <div class="slider-group">
@@ -91,7 +91,7 @@
                 </select>
             </div>
             <div class="slider-group">
-                <label for="image-size">图片尺寸: <span id="image-size-value">100%</span></label>
+                <label for="image-size"><span id="image-size-label">图片尺寸</span>: <input type="number" id="image-size-value" min="10" max="200" value="100" style="width: 60px; padding: 2px 4px;">%</label>
                 <input type="range" id="image-size" min="10" max="200" value="100">
             </div>
             <div class="size-inputs">
@@ -111,15 +111,15 @@
                 <p style="font-size: 0.8em; color: #666; margin: 0 0 0.8em 0;">调整图片的亮度、对比度和饱和度</p>
 
                 <div class="slider-group">
-                    <label for="brightness">亮度: <span id="brightness-value">100%</span></label>
+                    <label for="brightness"><span id="brightness-label">亮度</span>: <input type="number" id="brightness-value" min="0" max="200" value="100" style="width: 60px; padding: 2px 4px;">%</label>
                     <input type="range" id="brightness" min="0" max="200" value="100">
                 </div>
                 <div class="slider-group">
-                    <label for="contrast">对比度: <span id="contrast-value">100%</span></label>
+                    <label for="contrast"><span id="contrast-label">对比度</span>: <input type="number" id="contrast-value" min="0" max="200" value="100" style="width: 60px; padding: 2px 4px;">%</label>
                     <input type="range" id="contrast" min="0" max="200" value="100">
                 </div>
                 <div class="slider-group">
-                    <label for="saturation">饱和度: <span id="saturation-value">100%</span></label>
+                    <label for="saturation"><span id="saturation-label">饱和度</span>: <input type="number" id="saturation-value" min="0" max="200" value="100" style="width: 60px; padding: 2px 4px;">%</label>
                     <input type="range" id="saturation" min="0" max="200" value="100">
                 </div>
                 <button id="reset-image-adjustments" style="width: 100%; margin-top: 0.5em; padding: 0.5em; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer;">重置所有调整</button>
