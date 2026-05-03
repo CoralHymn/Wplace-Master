@@ -440,10 +440,17 @@ input[type="range"] { width: 100%; }
     z-index: 20;
 }
 
-#download-btn {
+.preview-actions {
     position: absolute;
     bottom: 6em;
     right: 2em;
+    display: none;
+    gap: 8px;
+    margin-top: 12px;
+    z-index: 20;
+}
+
+.preview-actions button {
     padding: 1em 1.5em;
     font-size: 1em;
     font-weight: 700;
@@ -454,10 +461,11 @@ input[type="range"] { width: 100%; }
     cursor: pointer;
     transition: background-color 0.3s;
     box-shadow: var(--shadow);
-    display: none;
 }
 
-#download-btn:hover { background-color: var(--primary-hover); }
+.preview-actions button:hover {
+    background-color: var(--primary-hover);
+}
 
 #download-btn:disabled {
     background-color: #e9ecef;
@@ -844,21 +852,25 @@ footer a:hover { text-decoration: underline; }
         font-size: 16px; /* 防止 iOS 自动缩放 */
     }
 
-    /* 下载按钮固定在底部 */
-    #download-btn {
+    /* 下载按钮容器固定在底部 */
+    .preview-actions {
         bottom: 1em !important;
         right: 1em !important;
         left: 1em !important;
         width: auto !important;
-        padding: 0.9em 1.5em;
-        font-size: 16px;
         z-index: 100;
     }
 
+    .preview-actions button {
+        padding: 0.9em 1.5em;
+        font-size: 16px;
+        min-height: 44px;
+    }
+
     /* 确保下载按钮在移动端可以显示 */
-    #download-btn[style*="display: block"],
-    #download-btn:not([style*="display: none"]) {
-        display: block !important;
+    .preview-actions[style*="display: flex"],
+    .preview-actions:not([style*="display: none"]) {
+        display: flex !important;
     }
 
     /* 预览控制条 */
