@@ -214,6 +214,72 @@ body {
     flex: 1;
 }
 
+/* 笔刷大小控制 */
+.brush-size-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px;
+    flex-shrink: 0;
+}
+
+.brush-size-label {
+    font-size: 12px;
+    color: #6c757d;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.brush-size-slider {
+    width: 100px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #dee2e6;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.brush-size-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #007bff;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.brush-size-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.2);
+}
+
+.brush-size-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #007bff;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+}
+
+.brush-size-slider::-moz-range-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.2);
+}
+
+.brush-size-value {
+    min-width: 24px;
+    text-align: center;
+    font-size: 13px;
+    color: #007bff;
+    font-weight: 600;
+}
+
 .tool-btn {
     width: 36px;
     height: 36px;
@@ -498,6 +564,25 @@ body {
 
     .toolbar-spacer {
         display: none;
+    }
+
+    /* 移动端笔刷大小控制 */
+    .brush-size-control {
+        gap: 4px;
+        padding: 0 2px;
+    }
+
+    .brush-size-label {
+        font-size: 11px;
+    }
+
+    .brush-size-slider {
+        width: 60px;
+    }
+
+    .brush-size-value {
+        font-size: 12px;
+        min-width: 20px;
     }
 
     .canvas-container {
