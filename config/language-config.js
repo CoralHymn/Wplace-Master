@@ -75,7 +75,8 @@ const LANGUAGE_CONFIG = {
             imageProcessingDesc: "调整图片的亮度、对比度和饱和度",
             exportSelection: "导出选区",
             editInPainter: "在绘画工具中编辑",
-            pixelPaintTool: "像素绘画工具"
+            pixelPaintTool: "像素绘画工具",
+            transparentColor: "透明"
         },
         ru: {
             title: "Лучший конвертер цветов Wplace",
@@ -138,7 +139,8 @@ const LANGUAGE_CONFIG = {
             ditherScale: "Масштаб дизеринга",
             exportSelection: "Экспортировать выделение",
             editInPainter: "Редактировать в инструменте рисования",
-            pixelPaintTool: "Инструмент пиксельной живописи"
+            pixelPaintTool: "Инструмент пиксельной живописи",
+            transparentColor: "Прозрачный"
         },
         en: {
             title: "Better Wplace Color Converter",
@@ -202,7 +204,8 @@ const LANGUAGE_CONFIG = {
             imageProcessingDesc: "Adjust brightness, contrast and saturation of the image",
             exportSelection: "Export Selection",
             editInPainter: "Edit in Painting Tool",
-            pixelPaintTool: "Pixel Paint Tool"
+            pixelPaintTool: "Pixel Paint Tool",
+            transparentColor: "Transparent"
         },
         ja: {
             title: "より良いWplace色変換器",
@@ -265,7 +268,8 @@ const LANGUAGE_CONFIG = {
             ditherScale: "ディザ倍率",
             exportSelection: "選択範囲をエクスポート",
             editInPainter: "描画ツールで編集",
-            pixelPaintTool: "ピクセルペイントツール"
+            pixelPaintTool: "ピクセルペイントツール",
+            transparentColor: "透明"
         }
     }
 };
