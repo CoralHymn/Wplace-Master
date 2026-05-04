@@ -47,8 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
         realtimeEnabled: true,
         // 参与人数
         participantCount: 1,
-        // 强制去除半透明像素
-        forceOpaqueEnabled: false
+        // 强制去除半透明像素（默认开启）
+        forceOpaqueEnabled: true
     };
 
     // --- DOM Elements ---
@@ -1586,30 +1586,56 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderReplacementPalettes() {
-        renderReplacementPalette(replacementFreeGrid, state.freeColors);
-        renderReplacementPalette(replacementPaidGrid, state.paidColors);
+        // 为免费颜色面板添加透明颜色选项
+        const transparentColor = [0, 0, 0, 0]; // RGBA: 完全透明
+        const freeColorsWithTransparent = [transparentColor, ...state.freeColors];
+        
+        renderReplacementPalette(replacementFreeGrid, freeColorsWithTransparent, true);
+        renderReplacementPalette(replacementPaidGrid, state.paidColors, false);
     }
 
-    function renderReplacementPalette(grid, colors) {
+    function renderReplacementPalette(grid, colors, includeTransparent) {
         grid.innerHTML = '';
+        const t = TRANSLATIONS[currentLanguage];
 
         colors.forEach(color => {
             const swatch = document.createElement('div');
             swatch.className = 'color-swatch';
-            swatch.style.backgroundColor = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
-            swatch.dataset.color = JSON.stringify(color);
-
-            const colorKey = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
-            const colorInfo = COLOR_INFO[colorKey] || { name: 'Unknown', isPaid: false };
-            let displayName = colorInfo.name;
-            if (colorInfo.name === 'Salmon') {
-                displayName = 'Salmon【三文鱼、肉意思】';
+            
+            // 检查是否是透明颜色（数组长度为4且第4个元素为0）
+            const isTransparent = includeTransparent && color.length === 4 && color[3] === 0;
+            
+            if (isTransparent) {
+                // 透明颜色使用特殊的棋盘格背景
+                swatch.style.background = `linear-gradient(45deg, #ccc 25%, transparent 25%), 
+                                          linear-gradient(-45deg, #ccc 25%, transparent 25%), 
+                                          linear-gradient(45deg, transparent 75%, #ccc 75%), 
+                                          linear-gradient(-45deg, transparent 75%, #ccc 75%)`;
+                swatch.style.backgroundSize = '10px 10px';
+                swatch.style.backgroundPosition = '0 0, 0 5px, 5px -5px, -5px 0px';
+                swatch.style.backgroundColor = 'white';
+            } else {
+                swatch.style.backgroundColor = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
             }
-            displayName += colorInfo.isPaid ? ' ★' : '';
+            
+            swatch.dataset.color = JSON.stringify(color);
 
             const tooltip = document.createElement('span');
             tooltip.className = 'tooltip-text';
-            tooltip.textContent = displayName;
+            
+            if (isTransparent) {
+                tooltip.textContent = t.transparentColor || 'Transparent';
+            } else {
+                const colorKey = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+                const colorInfo = COLOR_INFO[colorKey] || { name: 'Unknown', isPaid: false };
+                let displayName = colorInfo.name;
+                if (colorInfo.name === 'Salmon') {
+                    displayName = 'Salmon【三文鱼、肉意思】';
+                }
+                displayName += colorInfo.isPaid ? ' ★' : '';
+                tooltip.textContent = displayName;
+            }
+            
             swatch.appendChild(tooltip);
 
             grid.appendChild(swatch);
@@ -1681,29 +1707,37 @@ document.addEventListener('DOMContentLoaded', () => {
             item.className = 'replacement-item';
 
             const sourceColorKey = `rgb(${sourceColor[0]}, ${sourceColor[1]}, ${sourceColor[2]})`;
-            const replacementColorKey = `rgb(${replacementColor[0]}, ${replacementColor[1]}, ${replacementColor[2]})`;
+            
+            // 检查替换颜色是否是透明颜色
+            const isTransparentReplacement = replacementColor.length === 4 && replacementColor[3] === 0;
+            const replacementColorKey = isTransparentReplacement ? 'transparent' : `rgb(${replacementColor[0]}, ${replacementColor[1]}, ${replacementColor[2]})`;
 
             const sourceColorInfo = COLOR_INFO[sourceColorKey] || { name: 'Unknown', isPaid: false };
-            const replacementColorInfo = COLOR_INFO[replacementColorKey] || { name: 'Unknown', isPaid: false };
-
+            
             let sourceDisplayName = sourceColorInfo.name;
             if (sourceColorInfo.name === 'Salmon') {
                 sourceDisplayName = 'Salmon【三文鱼、肉意思】';
             }
             sourceDisplayName += sourceColorInfo.isPaid ? ' ★' : '';
 
-            let replacementDisplayName = replacementColorInfo.name;
-            if (replacementColorInfo.name === 'Salmon') {
-                replacementDisplayName = 'Salmon【三文鱼、肉意思】';
+            let replacementDisplayName;
+            if (isTransparentReplacement) {
+                replacementDisplayName = t.transparentColor || 'Transparent';
+            } else {
+                const replacementColorInfo = COLOR_INFO[replacementColorKey] || { name: 'Unknown', isPaid: false };
+                replacementDisplayName = replacementColorInfo.name;
+                if (replacementColorInfo.name === 'Salmon') {
+                    replacementDisplayName = 'Salmon【三文鱼、肉意思】';
+                }
+                replacementDisplayName += replacementColorInfo.isPaid ? ' ★' : '';
             }
-            replacementDisplayName += replacementColorInfo.isPaid ? ' ★' : '';
 
             item.innerHTML = `
                 <div class="replacement-mapping">
                     <div class="color-preview" style="background-color: ${sourceColorKey};"></div>
                     <span>${sourceDisplayName}</span>
                     <span class="replacement-arrow">→</span>
-                    <div class="color-preview" style="background-color: ${replacementColorKey};"></div>
+                    <div class="color-preview" style="background-color: ${replacementColorKey}; ${isTransparentReplacement ? 'background: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%); background-size: 10px 10px; background-position: 0 0, 0 5px, 5px -5px, -5px 0px; background-color: white;' : ''}"></div>
                     <span>${replacementDisplayName}</span>
                 </div>
                 <button class="remove-replacement-btn" data-source="${sourceColorStr}">${t.remove || 'Remove'}</button>
@@ -1733,10 +1767,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (state.colorReplacements.has(colorKey)) {
                 const replacementColor = state.colorReplacements.get(colorKey);
-                newData[i] = replacementColor[0];
-                newData[i + 1] = replacementColor[1];
-                newData[i + 2] = replacementColor[2];
-                newData[i + 3] = a;
+                
+                // 检查是否是透明颜色（数组长度为4且第4个元素为0）
+                const isTransparent = replacementColor.length === 4 && replacementColor[3] === 0;
+                
+                if (isTransparent) {
+                    // 设置为完全透明
+                    newData[i] = 0;
+                    newData[i + 1] = 0;
+                    newData[i + 2] = 0;
+                    newData[i + 3] = 0;
+                } else {
+                    // 正常颜色替换
+                    newData[i] = replacementColor[0];
+                    newData[i + 1] = replacementColor[1];
+                    newData[i + 2] = replacementColor[2];
+                    newData[i + 3] = a;
+                }
             } else {
                 newData[i] = r;
                 newData[i + 1] = g;
