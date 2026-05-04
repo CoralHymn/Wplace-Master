@@ -498,6 +498,59 @@ function floodFill(startX, startY, fillColor) {
 }
 
 /**
+ * 全局填充算法 - 填充画布中所有与目标颜色相同的像素
+ */
+function globalFill(targetColor, fillColor) {
+    saveState();
+    
+    const width = state.canvasWidth;
+    const height = state.canvasHeight;
+    let fillCount = 0;
+    
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const currentColor = state.canvasData[y][x];
+            
+            // 如果当前像素颜色与目标颜色相同，则填充
+            if (currentColor === targetColor && currentColor !== fillColor) {
+                state.canvasData[y][x] = (fillColor === 'transparent') ? null : fillColor;
+                fillCount++;
+            }
+        }
+    }
+    
+    renderCanvas();
+    
+    // 显示填充结果提示
+    if (fillCount > 0) {
+        showNotification(`已填充 ${fillCount} 个像素`);
+    } else {
+        showNotification('没有找到可填充的像素');
+    }
+}
+
+/**
+ * 显示通知消息
+ */
+function showNotification(message) {
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // 2秒后自动消失
+    setTimeout(() => {
+        notification.classList.add('fade-out');
+        setTimeout(() => {
+            if (notification.parentNode) {
+                document.body.removeChild(notification);
+            }
+        }, 300);
+    }, 2000);
+}
+
+/**
  * 保存状态
  */
 function saveState() {
@@ -842,6 +895,19 @@ function handleMouseDown(e) {
         return;
     }
 
+    if (state.currentTool === 'global-fill') {
+        // 全局填充：需要点击一个像素来确定要替换的颜色
+        if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
+            const targetColor = state.canvasData[y][x];
+            if (targetColor !== null) {
+                globalFill(targetColor, state.currentColor);
+            } else {
+                showNotification('请点击有颜色的像素');
+            }
+        }
+        return;
+    }
+
     if (state.currentTool === 'picker') {
         if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
             const color = state.canvasData[y][x];
@@ -992,6 +1058,19 @@ function handleTouchStart(e) {
             return;
         }
 
+        if (state.currentTool === 'global-fill') {
+            // 全局填充：需要点击一个像素来确定要替换的颜色
+            if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
+                const targetColor = state.canvasData[y][x];
+                if (targetColor !== null) {
+                    globalFill(targetColor, state.currentColor);
+                } else {
+                    showNotification('请点击有颜色的像素');
+                }
+            }
+            return;
+        }
+
         if (state.currentTool === 'picker') {
             if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
                 const color = state.canvasData[y][x];
@@ -1100,7 +1179,14 @@ function handleKeyDown(e) {
         case 'm': document.querySelector('[data-tool="move"]')?.click(); break;
         case 'b': document.querySelector('[data-tool="pencil"]')?.click(); break;
         case 'e': document.querySelector('[data-tool="eraser"]')?.click(); break;
-        case 'g': document.querySelector('[data-tool="fill"]')?.click(); break;
+        case 'g': 
+            if (e.shiftKey) {
+                e.preventDefault();
+                document.querySelector('[data-tool="global-fill"]')?.click();
+            } else {
+                document.querySelector('[data-tool="fill"]')?.click();
+            }
+            break;
         case 'i': document.querySelector('[data-tool="picker"]')?.click(); break;
         case 'l': document.querySelector('[data-tool="line"]')?.click(); break;
         case 'r': document.querySelector('[data-tool="rect"]')?.click(); break;
