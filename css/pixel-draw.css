@@ -754,6 +754,15 @@ body {
         width: 28px;
         height: 28px;
     }
+
+    /* 移动端通知消息 */
+    .notification {
+        top: 60px;
+        padding: 10px 20px;
+        font-size: 13px;
+        max-width: 90%;
+        text-align: center;
+    }
 }
 
 /* ==================== 确认对话框样式 ==================== */
@@ -964,4 +973,48 @@ body {
     font-size: 13px;
     color: #333;
     font-weight: 500;
+}
+
+/* ==================== 通知消息样式 ==================== */
+.notification {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 10001;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: slideDown 0.3s ease;
+    pointer-events: none;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+.notification.fade-out {
+    animation: fadeOut 0.3s ease forwards;
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+    }
 }
