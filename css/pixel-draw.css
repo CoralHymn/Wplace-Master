@@ -264,6 +264,9 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* 启用硬件加速 */
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 #pixel-canvas {
@@ -273,6 +276,9 @@ body {
     cursor: crosshair;
     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     background: #fff;
+    /* 启用硬件加速，使transform更流畅 */
+    will-change: transform;
+    transform-origin: 0 0;
 }
 
 /* 底部状态栏 */
@@ -602,4 +608,90 @@ body {
         background: #f8f9fa;
         border-top: 1px dashed #dee2e6;
     }
+}
+
+/* ==================== 确认对话框样式 ==================== */
+.confirm-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.confirm-dialog {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    min-width: 320px;
+    max-width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.confirm-message {
+    font-size: 16px;
+    color: #333;
+    margin-bottom: 20px;
+    line-height: 1.6;
+    text-align: center;
+}
+
+.confirm-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.confirm-btn {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 80px;
+}
+
+.confirm-btn.cancel {
+    background: #f0f2f5;
+    color: #666;
+}
+
+.confirm-btn.cancel:hover {
+    background: #e0e2e5;
+}
+
+.confirm-btn.confirm {
+    background: #dc3545;
+    color: white;
+}
+
+.confirm-btn.confirm:hover {
+    background: #c82333;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
 }

@@ -248,9 +248,10 @@ function selectColor(colorInfo) {
  * 更新画布变换
  */
 function updateCanvasTransform() {
-    canvas.style.width = (state.canvasWidth * state.zoom) + 'px';
-    canvas.style.height = (state.canvasHeight * state.zoom) + 'px';
-    canvas.style.transform = `translate(${state.panOffsetX}px, ${state.panOffsetY}px)`;
+    // 使用 CSS transform 进行缩放和平移，更加流畅
+    const scale = state.zoom;
+    canvas.style.transform = `translate(${state.panOffsetX}px, ${state.panOffsetY}px) scale(${scale})`;
+    canvas.style.transformOrigin = '0 0';
 }
 
 /**
@@ -564,6 +565,11 @@ function initEventListeners() {
         renderCanvas();
     });
 
+    // 画布回归中心按钮
+    document.getElementById('center-canvas-btn').addEventListener('click', () => {
+        centerCanvas();
+    });
+
     document.getElementById('import-btn').addEventListener('click', () => {
         document.getElementById('import-file').click();
     });
@@ -578,17 +584,19 @@ function initEventListeners() {
 }
 
 function zoomIn() {
-    state.zoom = Math.min(80, state.zoom + 1);
+    const oldZoom = state.zoom;
+    const zoomFactor = 1.1;
+    state.zoom = Math.min(80, Math.round(state.zoom * zoomFactor));
     updateCanvasTransform();
     updateZoomDisplay();
-    renderCanvas();
 }
 
 function zoomOut() {
-    state.zoom = Math.max(1, state.zoom - 1);
+    const oldZoom = state.zoom;
+    const zoomFactor = 1.1;
+    state.zoom = Math.max(1, Math.round(state.zoom / zoomFactor));
     updateCanvasTransform();
     updateZoomDisplay();
-    renderCanvas();
 }
 
 function setCanvasBgColor(color) {
@@ -707,9 +715,11 @@ function handleContainerMouseUp() {
 
 function handleWheel(e) {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? -1 : 1;
+    const zoomFactor = 1.1;
     const oldZoom = state.zoom;
-    state.zoom = Math.max(1, Math.min(80, state.zoom + delta));
+
+    state.zoom *= (e.deltaY < 0 ? zoomFactor : 1 / zoomFactor);
+    state.zoom = Math.max(1, Math.min(80, state.zoom));
 
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -720,7 +730,6 @@ function handleWheel(e) {
 
     updateCanvasTransform();
     updateZoomDisplay();
-    renderCanvas();
 }
 
 function handleTouchStart(e) {
@@ -803,7 +812,6 @@ function handleTouchMove(e) {
         
         updateCanvasTransform();
         updateZoomDisplay();
-        renderCanvas();
         return;
     }
 
@@ -845,3 +853,106 @@ function handleKeyDown(e) {
         case 'c': document.querySelector('[data-tool="circle"]')?.click(); break;
     }
 }
+
+/**
+ * 检查画布是否有内容（非空像素）
+ */
+function hasCanvasContent() {
+    if (!state.canvasData || state.canvasData.length === 0) return false;
+    
+    for (let y = 0; y < state.canvasHeight; y++) {
+        for (let x = 0; x < state.canvasWidth; x++) {
+            if (state.canvasData[y][x] !== null) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * 显示确认对话框
+ */
+function showConfirmDialog(message, onConfirm) {
+    const dialog = document.createElement('div');
+    dialog.className = 'confirm-dialog-overlay';
+    dialog.innerHTML = `
+        <div class="confirm-dialog">
+            <div class="confirm-message">${message}</div>
+            <div class="confirm-buttons">
+                <button class="confirm-btn cancel">取消</button>
+                <button class="confirm-btn confirm">确定</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    dialog.querySelector('.cancel').addEventListener('click', () => {
+        document.body.removeChild(dialog);
+    });
+    
+    dialog.querySelector('.confirm').addEventListener('click', () => {
+        document.body.removeChild(dialog);
+        if (onConfirm) onConfirm();
+    });
+    
+    // 点击背景关闭
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) {
+            document.body.removeChild(dialog);
+        }
+    });
+}
+
+/**
+ * 处理返回转换器
+ */
+function handleBackToConverter() {
+    if (hasCanvasContent()) {
+        showConfirmDialog('画布上有作品，确定要返回吗？未保存的内容将丢失。', () => {
+            window.location.href = 'index.html';
+        });
+    } else {
+        window.location.href = 'index.html';
+    }
+}
+
+/**
+ * 画布回归中心
+ */
+function centerCanvas() {
+    const container = document.getElementById('canvas-container');
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    
+    const canvasWidth = state.canvasWidth * state.zoom;
+    const canvasHeight = state.canvasHeight * state.zoom;
+    
+    // 计算居中位置
+    state.panOffsetX = (containerWidth - canvasWidth) / 2;
+    state.panOffsetY = (containerHeight - canvasHeight) / 2;
+    
+    updateCanvasTransform();
+}
+
+// 页面加载时添加事件监听
+document.addEventListener('DOMContentLoaded', () => {
+    // 添加返回按钮事件
+    const backBtn = document.querySelector('.back-btn');
+    if (backBtn) {
+        backBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleBackToConverter();
+        });
+    }
+    
+    // 添加页面关闭前的事件监听
+    window.addEventListener('beforeunload', (e) => {
+        if (hasCanvasContent()) {
+            e.preventDefault();
+            e.returnValue = '';
+            return '';
+        }
+    });
+});
