@@ -6,6 +6,7 @@
 const state = {
     currentColor: null,
     currentTool: 'pencil',
+    brushSize: 1, // 笔刷大小（像素）
     canvasWidth: 0,
     canvasHeight: 0,
     zoom: 20,
@@ -310,15 +311,26 @@ function drawGrid() {
 }
 
 /**
- * 绘制像素
+ * 绘制像素（支持笔刷大小）
  */
 function drawPixel(x, y) {
     if (x < 0 || x >= state.canvasWidth || y < 0 || y >= state.canvasHeight) return;
 
-    if (state.currentTool === 'eraser') {
-        state.canvasData[y][x] = null;
-    } else if (state.currentColor) {
-        state.canvasData[y][x] = state.currentColor;
+    const radius = Math.floor(state.brushSize / 2);
+    
+    for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+            const px = x + dx;
+            const py = y + dy;
+            
+            if (px >= 0 && px < state.canvasWidth && py >= 0 && py < state.canvasHeight) {
+                if (state.currentTool === 'eraser') {
+                    state.canvasData[py][px] = null;
+                } else if (state.currentColor) {
+                    state.canvasData[py][px] = state.currentColor;
+                }
+            }
+        }
     }
 }
 
@@ -333,7 +345,7 @@ function getCanvasCoords(e) {
 }
 
 /**
- * Bresenham直线算法
+ * Bresenham直线算法（支持笔刷大小）
  */
 function drawLine(x0, y0, x1, y1, color) {
     const dx = Math.abs(x1 - x0);
@@ -343,9 +355,18 @@ function drawLine(x0, y0, x1, y1, color) {
     let err = dx - dy;
 
     while (true) {
-        if (x0 >= 0 && x0 < state.canvasWidth && y0 >= 0 && y0 < state.canvasHeight) {
-            state.canvasData[y0][x0] = color;
+        // 在每个点上应用笔刷大小
+        const radius = Math.floor(state.brushSize / 2);
+        for (let by = -radius; by <= radius; by++) {
+            for (let bx = -radius; bx <= radius; bx++) {
+                const px = x0 + bx;
+                const py = y0 + by;
+                if (px >= 0 && px < state.canvasWidth && py >= 0 && py < state.canvasHeight) {
+                    state.canvasData[py][px] = color;
+                }
+            }
         }
+        
         if (x0 === x1 && y0 === y1) break;
         const e2 = 2 * err;
         if (e2 > -dy) { err -= dy; x0 += sx; }
@@ -603,6 +624,21 @@ function initEventListeners() {
     document.querySelectorAll('.bg-color-btn').forEach(btn => {
         btn.addEventListener('click', () => setCanvasBgColor(btn.dataset.color));
     });
+
+    // 笔刷大小控制
+    const brushSizeInput = document.getElementById('brush-size');
+    const brushSizeValue = document.getElementById('brush-size-value');
+    if (brushSizeInput && brushSizeValue) {
+        brushSizeInput.addEventListener('input', (e) => {
+            state.brushSize = parseInt(e.target.value);
+            brushSizeValue.textContent = state.brushSize;
+        });
+        
+        brushSizeInput.addEventListener('change', (e) => {
+            state.brushSize = parseInt(e.target.value);
+            brushSizeValue.textContent = state.brushSize;
+        });
+    }
 
     document.addEventListener('keydown', handleKeyDown);
 }
@@ -927,7 +963,27 @@ function handleKeyDown(e) {
         case 'l': document.querySelector('[data-tool="line"]')?.click(); break;
         case 'r': document.querySelector('[data-tool="rect"]')?.click(); break;
         case 'c': document.querySelector('[data-tool="circle"]')?.click(); break;
+        case '[': 
+            e.preventDefault();
+            state.brushSize = Math.max(1, state.brushSize - 1);
+            updateBrushSizeDisplay();
+            break;
+        case ']': 
+            e.preventDefault();
+            state.brushSize = Math.min(20, state.brushSize + 1);
+            updateBrushSizeDisplay();
+            break;
     }
+}
+
+/**
+ * 更新笔刷大小显示
+ */
+function updateBrushSizeDisplay() {
+    const brushSizeInput = document.getElementById('brush-size');
+    const brushSizeValue = document.getElementById('brush-size-value');
+    if (brushSizeInput) brushSizeInput.value = state.brushSize;
+    if (brushSizeValue) brushSizeValue.textContent = state.brushSize;
 }
 
 /**
