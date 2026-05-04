@@ -6,6 +6,7 @@
 const state = {
     currentColor: null,
     currentTool: 'pencil',
+    brushSize: 1, // 笔刷大小（像素）
     canvasWidth: 0,
     canvasHeight: 0,
     zoom: 20,
@@ -30,7 +31,10 @@ const state = {
     pinchStartPanX: 0,
     pinchStartPanY: 0,
     importedImage: null,
-    canvasBgColor: '#f8f4f0'
+    canvasBgColor: '#f8f4f0',
+    // 用于优化性能
+    needsRender: false,
+    rafId: null
 };
 
 // DOM元素
@@ -173,6 +177,14 @@ function initPalette() {
     const freeColors = [];
     const paidColors = [];
 
+    // 添加透明颜色到免费颜色列表（作为第一个颜色）
+    freeColors.push({ 
+        rgb: 'transparent', 
+        name: 'Transparent', 
+        isPaid: false,
+        isTransparent: true 
+    });
+
     for (const [rgb, info] of Object.entries(COLOR_INFO)) {
         if (info.isPaid) {
             paidColors.push({ rgb, ...info });
@@ -213,9 +225,23 @@ function createColorSwatch(colorInfo, isPaid = false) {
     const swatch = document.createElement('div');
     swatch.className = 'color-swatch' + (isPaid ? ' paid' : '');
 
-    const rgbMatch = colorInfo.rgb.match(/\d+/g);
-    if (rgbMatch) {
-        swatch.style.backgroundColor = `rgb(${rgbMatch.join(',')})`;
+    // 特殊处理透明颜色
+    if (colorInfo.isTransparent) {
+        // 使用棋盘格背景表示透明
+        swatch.style.backgroundImage = `
+            linear-gradient(45deg, #ccc 25%, transparent 25%),
+            linear-gradient(-45deg, #ccc 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #ccc 75%),
+            linear-gradient(-45deg, transparent 75%, #ccc 75%)
+        `;
+        swatch.style.backgroundSize = '8px 8px';
+        swatch.style.backgroundPosition = '0 0, 0 4px, 4px -4px, -4px 0px';
+        swatch.style.backgroundColor = '#fff';
+    } else {
+        const rgbMatch = colorInfo.rgb.match(/\d+/g);
+        if (rgbMatch) {
+            swatch.style.backgroundColor = `rgb(${rgbMatch.join(',')})`;
+        }
     }
 
     swatch.dataset.color = colorInfo.rgb;
@@ -239,8 +265,24 @@ function selectColor(colorInfo) {
     const preview = document.getElementById('current-color-preview');
     const name = document.getElementById('current-color-name');
 
-    const rgbMatch = colorInfo.rgb.match(/\d+/g);
-    if (rgbMatch) preview.style.backgroundColor = `rgb(${rgbMatch.join(',')})`;
+    // 特殊处理透明颜色的预览
+    if (colorInfo.isTransparent) {
+        preview.style.backgroundImage = `
+            linear-gradient(45deg, #ccc 25%, transparent 25%),
+            linear-gradient(-45deg, #ccc 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #ccc 75%),
+            linear-gradient(-45deg, transparent 75%, #ccc 75%)
+        `;
+        preview.style.backgroundSize = '12px 12px';
+        preview.style.backgroundPosition = '0 0, 0 6px, 6px -6px, -6px 0px';
+        preview.style.backgroundColor = '#fff';
+    } else {
+        const rgbMatch = colorInfo.rgb.match(/\d+/g);
+        if (rgbMatch) {
+            preview.style.backgroundImage = 'none';
+            preview.style.backgroundColor = `rgb(${rgbMatch.join(',')})`;
+        }
+    }
     name.textContent = colorInfo.name;
 }
 
@@ -248,9 +290,23 @@ function selectColor(colorInfo) {
  * 更新画布变换
  */
 function updateCanvasTransform() {
-    canvas.style.width = (state.canvasWidth * state.zoom) + 'px';
-    canvas.style.height = (state.canvasHeight * state.zoom) + 'px';
-    canvas.style.transform = `translate(${state.panOffsetX}px, ${state.panOffsetY}px)`;
+    // 完全按照 index.html 的方式
+    // canvas 保持原始尺寸，使用 transform 进行缩放和平移
+    canvas.style.transform = `translate(${state.panOffsetX}px, ${state.panOffsetY}px) scale(${state.zoom})`;
+    canvas.style.transformOrigin = '0 0';
+}
+
+/**
+ * 优化的更新函数 - 使用 requestAnimationFrame
+ */
+function scheduleUpdate() {
+    if (state.rafId) return; // 已经有待处理的帧
+    
+    state.rafId = requestAnimationFrame(() => {
+        updateCanvasTransform();
+        updateZoomDisplay();
+        state.rafId = null;
+    });
 }
 
 /**
@@ -293,15 +349,27 @@ function drawGrid() {
 }
 
 /**
- * 绘制像素
+ * 绘制像素（支持笔刷大小）
  */
 function drawPixel(x, y) {
     if (x < 0 || x >= state.canvasWidth || y < 0 || y >= state.canvasHeight) return;
 
-    if (state.currentTool === 'eraser') {
-        state.canvasData[y][x] = null;
-    } else if (state.currentColor) {
-        state.canvasData[y][x] = state.currentColor;
+    const radius = Math.floor(state.brushSize / 2);
+    
+    for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+            const px = x + dx;
+            const py = y + dy;
+            
+            if (px >= 0 && px < state.canvasWidth && py >= 0 && py < state.canvasHeight) {
+                // 如果当前颜色是透明或橡皮擦工具，清除像素
+                if (state.currentTool === 'eraser' || state.currentColor === 'transparent') {
+                    state.canvasData[py][px] = null;
+                } else if (state.currentColor) {
+                    state.canvasData[py][px] = state.currentColor;
+                }
+            }
+        }
     }
 }
 
@@ -316,7 +384,7 @@ function getCanvasCoords(e) {
 }
 
 /**
- * Bresenham直线算法
+ * Bresenham直线算法（支持笔刷大小）
  */
 function drawLine(x0, y0, x1, y1, color) {
     const dx = Math.abs(x1 - x0);
@@ -326,9 +394,19 @@ function drawLine(x0, y0, x1, y1, color) {
     let err = dx - dy;
 
     while (true) {
-        if (x0 >= 0 && x0 < state.canvasWidth && y0 >= 0 && y0 < state.canvasHeight) {
-            state.canvasData[y0][x0] = color;
+        // 在每个点上应用笔刷大小
+        const radius = Math.floor(state.brushSize / 2);
+        for (let by = -radius; by <= radius; by++) {
+            for (let bx = -radius; bx <= radius; bx++) {
+                const px = x0 + bx;
+                const py = y0 + by;
+                if (px >= 0 && px < state.canvasWidth && py >= 0 && py < state.canvasHeight) {
+                    // 如果颜色是透明，清除像素
+                    state.canvasData[py][px] = (color === 'transparent' || color === null) ? null : color;
+                }
+            }
         }
+        
         if (x0 === x1 && y0 === y1) break;
         const e2 = 2 * err;
         if (e2 > -dy) { err -= dy; x0 += sx; }
@@ -398,6 +476,7 @@ function floodFill(startX, startY, fillColor) {
     if (startX < 0 || startX >= state.canvasWidth || startY < 0 || startY >= state.canvasHeight) return;
 
     const targetColor = state.canvasData[startY][startX];
+    // 允许用透明色填充
     if (targetColor === fillColor) return;
 
     const stack = [[startX, startY]];
@@ -412,9 +491,63 @@ function floodFill(startX, startY, fillColor) {
         if (state.canvasData[y][x] !== targetColor) continue;
 
         visited.add(key);
-        state.canvasData[y][x] = fillColor;
+        // 如果填充色是透明，设置为null
+        state.canvasData[y][x] = (fillColor === 'transparent') ? null : fillColor;
         stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
     }
+}
+
+/**
+ * 全局填充算法 - 填充画布中所有与目标颜色相同的像素
+ */
+function globalFill(targetColor, fillColor) {
+    saveState();
+    
+    const width = state.canvasWidth;
+    const height = state.canvasHeight;
+    let fillCount = 0;
+    
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const currentColor = state.canvasData[y][x];
+            
+            // 如果当前像素颜色与目标颜色相同，则填充
+            if (currentColor === targetColor && currentColor !== fillColor) {
+                state.canvasData[y][x] = (fillColor === 'transparent') ? null : fillColor;
+                fillCount++;
+            }
+        }
+    }
+    
+    renderCanvas();
+    
+    // 显示填充结果提示
+    if (fillCount > 0) {
+        showNotification(`已填充 ${fillCount} 个像素`);
+    } else {
+        showNotification('没有找到可填充的像素');
+    }
+}
+
+/**
+ * 显示通知消息
+ */
+function showNotification(message) {
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // 2秒后自动消失
+    setTimeout(() => {
+        notification.classList.add('fade-out');
+        setTimeout(() => {
+            if (notification.parentNode) {
+                document.body.removeChild(notification);
+            }
+        }, 300);
+    }, 2000);
 }
 
 /**
@@ -460,6 +593,101 @@ function clearCanvas() {
 }
 
 /**
+ * 自动描边功能
+ * @param {string} outlineType - 'inner'（内边线）或 'outer'（外边线）或 'both'（内外边线）
+ */
+function autoOutline(outlineType = 'both') {
+    if (!state.currentColor || state.currentColor === 'transparent') {
+        alert('请先选择一个颜色！');
+        return;
+    }
+
+    saveState();
+    
+    const newCanvasData = JSON.parse(JSON.stringify(state.canvasData));
+    const width = state.canvasWidth;
+    const height = state.canvasHeight;
+    
+    // 遍历所有像素，检测边缘
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const isOpaque = state.canvasData[y][x] !== null;
+            
+            if (outlineType === 'inner' || outlineType === 'both') {
+                // 内边线：在不透明像素上，如果周围有透明像素，则绘制边线
+                if (isOpaque && hasTransparentNeighbor(x, y)) {
+                    newCanvasData[y][x] = state.currentColor;
+                }
+            }
+            
+            if (outlineType === 'outer' || outlineType === 'both') {
+                // 外边线：在透明像素上，如果周围有不透明像素，则绘制边线
+                if (!isOpaque && hasOpaqueNeighbor(x, y)) {
+                    newCanvasData[y][x] = state.currentColor;
+                }
+            }
+        }
+    }
+    
+    state.canvasData = newCanvasData;
+    renderCanvas();
+}
+
+/**
+ * 检查像素是否有透明邻居（8方向）
+ */
+function hasTransparentNeighbor(x, y) {
+    const neighbors = [
+        [-1, -1], [0, -1], [1, -1],
+        [-1, 0],           [1, 0],
+        [-1, 1],  [0, 1],  [1, 1]
+    ];
+    
+    for (const [dx, dy] of neighbors) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        // 边界外的视为透明
+        if (nx < 0 || nx >= state.canvasWidth || ny < 0 || ny >= state.canvasHeight) {
+            return true;
+        }
+        
+        if (state.canvasData[ny][nx] === null) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * 检查像素是否有不透明邻居（8方向）
+ */
+function hasOpaqueNeighbor(x, y) {
+    const neighbors = [
+        [-1, -1], [0, -1], [1, -1],
+        [-1, 0],           [1, 0],
+        [-1, 1],  [0, 1],  [1, 1]
+    ];
+    
+    for (const [dx, dy] of neighbors) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        // 边界外不算
+        if (nx < 0 || nx >= state.canvasWidth || ny < 0 || ny >= state.canvasHeight) {
+            continue;
+        }
+        
+        if (state.canvasData[ny][nx] !== null) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
  * 导出PNG
  */
 function downloadPNG() {
@@ -487,7 +715,8 @@ function downloadPNG() {
  * 更新缩放显示
  */
 function updateZoomDisplay() {
-    document.getElementById('zoom-level').textContent = state.zoom + 'x';
+    // 只显示小数点后一位
+    document.getElementById('zoom-level').textContent = state.zoom.toFixed(1) + 'x';
 }
 
 /**
@@ -548,6 +777,13 @@ function initEventListeners() {
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             state.currentTool = btn.dataset.tool;
+            
+            // 根据工具更新光标
+            if (state.currentTool === 'move') {
+                canvas.style.cursor = 'grab';
+            } else {
+                canvas.style.cursor = 'crosshair';
+            }
         });
     });
 
@@ -558,10 +794,20 @@ function initEventListeners() {
     document.getElementById('clear-btn').addEventListener('click', clearCanvas);
     document.getElementById('download-btn').addEventListener('click', downloadPNG);
 
+    // 自动描边按钮 - 点击弹出选项
+    document.getElementById('outline-btn').addEventListener('click', () => {
+        showOutlineOptions();
+    });
+
     document.getElementById('grid-toggle').addEventListener('click', () => {
         state.showGrid = !state.showGrid;
         document.getElementById('grid-toggle').classList.toggle('active', state.showGrid);
         renderCanvas();
+    });
+
+    // 画布回归中心按钮
+    document.getElementById('center-canvas-btn').addEventListener('click', () => {
+        centerCanvas();
     });
 
     document.getElementById('import-btn').addEventListener('click', () => {
@@ -574,21 +820,38 @@ function initEventListeners() {
         btn.addEventListener('click', () => setCanvasBgColor(btn.dataset.color));
     });
 
+    // 笔刷大小控制
+    const brushSizeInput = document.getElementById('brush-size');
+    const brushSizeValue = document.getElementById('brush-size-value');
+    if (brushSizeInput && brushSizeValue) {
+        brushSizeInput.addEventListener('input', (e) => {
+            state.brushSize = parseInt(e.target.value);
+            brushSizeValue.textContent = state.brushSize;
+        });
+        
+        brushSizeInput.addEventListener('change', (e) => {
+            state.brushSize = parseInt(e.target.value);
+            brushSizeValue.textContent = state.brushSize;
+        });
+    }
+
     document.addEventListener('keydown', handleKeyDown);
 }
 
 function zoomIn() {
-    state.zoom = Math.min(80, state.zoom + 1);
+    const oldZoom = state.zoom;
+    const zoomFactor = 1.1;
+    state.zoom = Math.min(80, Math.round(state.zoom * zoomFactor));
     updateCanvasTransform();
     updateZoomDisplay();
-    renderCanvas();
 }
 
 function zoomOut() {
-    state.zoom = Math.max(1, state.zoom - 1);
+    const oldZoom = state.zoom;
+    const zoomFactor = 1.1;
+    state.zoom = Math.max(1, Math.round(state.zoom / zoomFactor));
     updateCanvasTransform();
     updateZoomDisplay();
-    renderCanvas();
 }
 
 function setCanvasBgColor(color) {
@@ -611,6 +874,16 @@ function handleMouseDown(e) {
         return;
     }
 
+    // 左键 + 移动工具 = 平移画布
+    if (e.button === 0 && state.currentTool === 'move') {
+        e.preventDefault();
+        state.isPanning = true;
+        state.panStartX = e.clientX - state.panOffsetX;
+        state.panStartY = e.clientY - state.panOffsetY;
+        canvas.style.cursor = 'grabbing';
+        return;
+    }
+
     if (e.button !== 0) return;
     e.stopPropagation();
     const { x, y } = getCanvasCoords(e);
@@ -619,6 +892,19 @@ function handleMouseDown(e) {
         saveState();
         floodFill(x, y, state.currentColor);
         renderCanvas();
+        return;
+    }
+
+    if (state.currentTool === 'global-fill') {
+        // 全局填充：需要点击一个像素来确定要替换的颜色
+        if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
+            const targetColor = state.canvasData[y][x];
+            if (targetColor !== null) {
+                globalFill(targetColor, state.currentColor);
+            } else {
+                showNotification('请点击有颜色的像素');
+            }
+        }
         return;
     }
 
@@ -673,10 +959,15 @@ function handleMouseMove(e) {
 }
 
 function handleMouseUp(e) {
-    // 右键拖拽结束
+    // 右键拖拽结束或移动工具结束
     if (state.isPanning) {
         state.isPanning = false;
-        canvas.style.cursor = 'crosshair';
+        // 根据当前工具恢复光标
+        if (state.currentTool === 'move') {
+            canvas.style.cursor = 'grab';
+        } else {
+            canvas.style.cursor = 'crosshair';
+        }
         return;
     }
 
@@ -690,37 +981,46 @@ function handleContainerMouseDown(e) {
     state.isPanning = true;
     state.panStartX = e.clientX - state.panOffsetX;
     state.panStartY = e.clientY - state.panOffsetY;
-    canvasViewport.style.cursor = 'grabbing';
+    canvas.style.cursor = 'grabbing';
 }
 
 function handleContainerMouseMove(e) {
     if (!state.isPanning) return;
     state.panOffsetX = e.clientX - state.panStartX;
     state.panOffsetY = e.clientY - state.panStartY;
-    updateCanvasTransform();
+    scheduleUpdate();
 }
 
 function handleContainerMouseUp() {
     state.isPanning = false;
-    canvasViewport.style.cursor = '';
+    // 根据当前工具恢复光标
+    if (state.currentTool === 'move') {
+        canvas.style.cursor = 'grab';
+    } else {
+        canvas.style.cursor = 'crosshair';
+    }
 }
 
 function handleWheel(e) {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? -1 : 1;
+    const zoomFactor = 1.1;
     const oldZoom = state.zoom;
-    state.zoom = Math.max(1, Math.min(80, state.zoom + delta));
 
-    const rect = canvas.getBoundingClientRect();
+    // 计算新的缩放级别
+    state.zoom *= (e.deltaY < 0 ? zoomFactor : 1 / zoomFactor);
+    state.zoom = Math.max(1, Math.min(80, state.zoom));
+
+    // 获取视口（canvas-container）的位置 - 与 index.html 一致
+    const viewport = document.getElementById('canvas-container');
+    const rect = viewport.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    const ratio = state.zoom / oldZoom;
-    state.panOffsetX = mouseX - (mouseX - state.panOffsetX) * ratio;
-    state.panOffsetY = mouseY - (mouseY - state.panOffsetY) * ratio;
 
-    updateCanvasTransform();
-    updateZoomDisplay();
-    renderCanvas();
+    // 完全按照 index.html 的公式
+    state.panOffsetX = mouseX - (mouseX - state.panOffsetX) * (state.zoom / oldZoom);
+    state.panOffsetY = mouseY - (mouseY - state.panOffsetY) * (state.zoom / oldZoom);
+
+    scheduleUpdate();
 }
 
 function handleTouchStart(e) {
@@ -739,12 +1039,35 @@ function handleTouchStart(e) {
     if (e.touches.length === 1) {
         e.preventDefault();
         const touch = e.touches[0];
+
+        // 如果是移动工具，启动平移模式
+        if (state.currentTool === 'move') {
+            state.isPanning = true;
+            state.panStartX = touch.clientX - state.panOffsetX;
+            state.panStartY = touch.clientY - state.panOffsetY;
+            canvas.style.cursor = 'grabbing';
+            return;
+        }
+
         const { x, y } = getCanvasCoords(touch);
 
         if (state.currentTool === 'fill') {
             saveState();
             floodFill(x, y, state.currentColor);
             renderCanvas();
+            return;
+        }
+
+        if (state.currentTool === 'global-fill') {
+            // 全局填充：需要点击一个像素来确定要替换的颜色
+            if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
+                const targetColor = state.canvasData[y][x];
+                if (targetColor !== null) {
+                    globalFill(targetColor, state.currentColor);
+                } else {
+                    showNotification('请点击有颜色的像素');
+                }
+            }
             return;
         }
 
@@ -775,35 +1098,42 @@ function handleTouchMove(e) {
         const currentDistance = getTouchDistance(e.touches);
         const scale = currentDistance / state.pinchStartDistance;
         
-        // 计算新的双指中心点
+        // 计算新的双指中心点（相对于视口）
+        const viewport = document.getElementById('canvas-container');
+        const viewportRect = viewport.getBoundingClientRect();
+        
         const currentCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         const currentCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         
-        // 计算中心点移动距离
-        const deltaX = currentCenterX - state.pinchStartCenterX;
-        const deltaY = currentCenterY - state.pinchStartCenterY;
-        
-        // 获取画布边界矩形
-        const rect = canvas.getBoundingClientRect();
-        const canvasCenterX = rect.left + rect.width / 2;
-        const canvasCenterY = rect.top + rect.height / 2;
-        
-        // 计算相对于画布中心的鼠标位置
-        const mouseX = currentCenterX - canvasCenterX;
-        const mouseY = currentCenterY - canvasCenterY;
+        // 相对于视口的位置
+        const mouseX = currentCenterX - viewportRect.left;
+        const mouseY = currentCenterY - viewportRect.top;
         
         // 应用缩放
         const oldZoom = state.zoom;
         state.zoom = Math.max(1, Math.min(80, Math.round(state.pinchStartZoom * scale)));
-        const ratio = state.zoom / oldZoom;
         
-        // 计算新的平移偏移
-        state.panOffsetX = state.pinchStartPanX + deltaX + mouseX * (1 - ratio);
-        state.panOffsetY = state.pinchStartPanY + deltaY + mouseY * (1 - ratio);
+        // 计算中心点移动距离（相对于初始位置）
+        const startMouseX = state.pinchStartCenterX - viewportRect.left;
+        const startMouseY = state.pinchStartCenterY - viewportRect.top;
+        const deltaX = mouseX - startMouseX;
+        const deltaY = mouseY - startMouseY;
         
-        updateCanvasTransform();
-        updateZoomDisplay();
-        renderCanvas();
+        // 使用与滚轮相同的公式，但需要考虑手指移动
+        state.panOffsetX = mouseX - (mouseX - (state.pinchStartPanX + deltaX)) * (state.zoom / oldZoom);
+        state.panOffsetY = mouseY - (mouseY - (state.pinchStartPanY + deltaY)) * (state.zoom / oldZoom);
+        
+        scheduleUpdate();
+        return;
+    }
+
+    // 移动工具的平移处理
+    if (e.touches.length === 1 && state.isPanning) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        state.panOffsetX = touch.clientX - state.panStartX;
+        state.panOffsetY = touch.clientY - state.panStartY;
+        scheduleUpdate();
         return;
     }
 
@@ -820,6 +1150,16 @@ function handleTouchMove(e) {
 
 function handleTouchEnd() {
     state.isDrawing = false;
+    // 清除移动工具的平移状态
+    if (state.isPanning) {
+        state.isPanning = false;
+        // 根据当前工具恢复光标
+        if (state.currentTool === 'move') {
+            canvas.style.cursor = 'grab';
+        } else {
+            canvas.style.cursor = 'crosshair';
+        }
+    }
 }
 
 function getTouchDistance(touches) {
@@ -836,12 +1176,198 @@ function handleKeyDown(e) {
     }
 
     switch (e.key.toLowerCase()) {
+        case 'm': document.querySelector('[data-tool="move"]')?.click(); break;
         case 'b': document.querySelector('[data-tool="pencil"]')?.click(); break;
         case 'e': document.querySelector('[data-tool="eraser"]')?.click(); break;
-        case 'g': document.querySelector('[data-tool="fill"]')?.click(); break;
+        case 'g': 
+            if (e.shiftKey) {
+                e.preventDefault();
+                document.querySelector('[data-tool="global-fill"]')?.click();
+            } else {
+                document.querySelector('[data-tool="fill"]')?.click();
+            }
+            break;
         case 'i': document.querySelector('[data-tool="picker"]')?.click(); break;
         case 'l': document.querySelector('[data-tool="line"]')?.click(); break;
         case 'r': document.querySelector('[data-tool="rect"]')?.click(); break;
         case 'c': document.querySelector('[data-tool="circle"]')?.click(); break;
+        case 'o': 
+            e.preventDefault();
+            showOutlineOptions();
+            break;
+        case '[': 
+            e.preventDefault();
+            state.brushSize = Math.max(1, state.brushSize - 1);
+            updateBrushSizeDisplay();
+            break;
+        case ']': 
+            e.preventDefault();
+            state.brushSize = Math.min(20, state.brushSize + 1);
+            updateBrushSizeDisplay();
+            break;
     }
 }
+
+/**
+ * 更新笔刷大小显示
+ */
+function updateBrushSizeDisplay() {
+    const brushSizeInput = document.getElementById('brush-size');
+    const brushSizeValue = document.getElementById('brush-size-value');
+    if (brushSizeInput) brushSizeInput.value = state.brushSize;
+    if (brushSizeValue) brushSizeValue.textContent = state.brushSize;
+}
+
+/**
+ * 检查画布是否有内容（非空像素）
+ */
+function hasCanvasContent() {
+    if (!state.canvasData || state.canvasData.length === 0) return false;
+    
+    for (let y = 0; y < state.canvasHeight; y++) {
+        for (let x = 0; x < state.canvasWidth; x++) {
+            if (state.canvasData[y][x] !== null) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * 显示确认对话框
+ */
+function showConfirmDialog(message, onConfirm) {
+    const dialog = document.createElement('div');
+    dialog.className = 'confirm-dialog-overlay';
+    dialog.innerHTML = `
+        <div class="confirm-dialog">
+            <div class="confirm-message">${message}</div>
+            <div class="confirm-buttons">
+                <button class="confirm-btn cancel">取消</button>
+                <button class="confirm-btn confirm">确定</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    dialog.querySelector('.cancel').addEventListener('click', () => {
+        document.body.removeChild(dialog);
+    });
+    
+    dialog.querySelector('.confirm').addEventListener('click', () => {
+        document.body.removeChild(dialog);
+        if (onConfirm) onConfirm();
+    });
+    
+    // 点击背景关闭
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) {
+            document.body.removeChild(dialog);
+        }
+    });
+}
+
+/**
+ * 显示描边选项对话框
+ */
+function showOutlineOptions() {
+    const dialog = document.createElement('div');
+    dialog.className = 'confirm-dialog-overlay';
+    dialog.innerHTML = `
+        <div class="confirm-dialog outline-dialog">
+            <div class="confirm-message">选择描边类型</div>
+            <div class="outline-options">
+                <button class="outline-option-btn" data-type="inner">
+                    <div class="option-icon inner-icon"></div>
+                    <div class="option-label">内边线</div>
+                </button>
+                <button class="outline-option-btn" data-type="outer">
+                    <div class="option-icon outer-icon"></div>
+                    <div class="option-label">外边线</div>
+                </button>
+                <button class="outline-option-btn" data-type="both">
+                    <div class="option-icon both-icon"></div>
+                    <div class="option-label">内外边线</div>
+                </button>
+            </div>
+            <div class="confirm-buttons">
+                <button class="confirm-btn cancel">取消</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    // 选项按钮事件
+    dialog.querySelectorAll('.outline-option-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const type = btn.dataset.type;
+            document.body.removeChild(dialog);
+            autoOutline(type);
+        });
+    });
+    
+    // 取消按钮
+    dialog.querySelector('.cancel').addEventListener('click', () => {
+        document.body.removeChild(dialog);
+    });
+    
+    // 点击背景关闭
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) {
+            document.body.removeChild(dialog);
+        }
+    });
+}
+
+/**
+ * 处理返回转换器
+ */
+function handleBackToConverter() {
+    if (hasCanvasContent()) {
+        showConfirmDialog('画布上有作品，确定要返回吗？未保存的内容将丢失。', () => {
+            window.location.href = 'index.html';
+        });
+    } else {
+        window.location.href = 'index.html';
+    }
+}
+
+/**
+ * 画布回归中心
+ */
+function centerCanvas() {
+    // 完全按照 index.html 的 centerImage 方式
+    const viewport = document.getElementById('canvas-container');
+    const viewportRect = viewport.getBoundingClientRect();
+    const canvasWidth = state.canvasWidth * state.zoom;
+    const canvasHeight = state.canvasHeight * state.zoom;
+
+    state.panOffsetX = (viewportRect.width - canvasWidth) / 2;
+    state.panOffsetY = (viewportRect.height - canvasHeight) / 2;
+    
+    updateCanvasTransform();
+}
+
+// 页面加载时添加事件监听
+document.addEventListener('DOMContentLoaded', () => {
+    // 添加返回按钮事件
+    const backBtn = document.querySelector('.back-btn');
+    if (backBtn) {
+        backBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleBackToConverter();
+        });
+    }
+    
+    // 添加页面关闭前的事件监听
+    window.addEventListener('beforeunload', (e) => {
+        if (hasCanvasContent()) {
+            e.preventDefault();
+            e.returnValue = '';
+            return '';
+        }
+    });
+});
