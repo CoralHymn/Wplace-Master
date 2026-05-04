@@ -107,6 +107,22 @@ body {
     box-shadow: 0 0 0 2px rgba(0,123,255,0.3);
 }
 
+/* 透明颜色特殊样式 */
+.color-swatch[data-color="transparent"] {
+    position: relative;
+}
+
+.color-swatch[data-color="transparent"]::after {
+    content: '∅';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 16px;
+    color: #999;
+    font-weight: bold;
+}
+
 .color-swatch.paid::after {
     content: '';
     position: absolute;

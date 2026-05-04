@@ -177,6 +177,14 @@ function initPalette() {
     const freeColors = [];
     const paidColors = [];
 
+    // 添加透明颜色到免费颜色列表（作为第一个颜色）
+    freeColors.push({ 
+        rgb: 'transparent', 
+        name: 'Transparent', 
+        isPaid: false,
+        isTransparent: true 
+    });
+
     for (const [rgb, info] of Object.entries(COLOR_INFO)) {
         if (info.isPaid) {
             paidColors.push({ rgb, ...info });
@@ -217,9 +225,23 @@ function createColorSwatch(colorInfo, isPaid = false) {
     const swatch = document.createElement('div');
     swatch.className = 'color-swatch' + (isPaid ? ' paid' : '');
 
-    const rgbMatch = colorInfo.rgb.match(/\d+/g);
-    if (rgbMatch) {
-        swatch.style.backgroundColor = `rgb(${rgbMatch.join(',')})`;
+    // 特殊处理透明颜色
+    if (colorInfo.isTransparent) {
+        // 使用棋盘格背景表示透明
+        swatch.style.backgroundImage = `
+            linear-gradient(45deg, #ccc 25%, transparent 25%),
+            linear-gradient(-45deg, #ccc 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #ccc 75%),
+            linear-gradient(-45deg, transparent 75%, #ccc 75%)
+        `;
+        swatch.style.backgroundSize = '8px 8px';
+        swatch.style.backgroundPosition = '0 0, 0 4px, 4px -4px, -4px 0px';
+        swatch.style.backgroundColor = '#fff';
+    } else {
+        const rgbMatch = colorInfo.rgb.match(/\d+/g);
+        if (rgbMatch) {
+            swatch.style.backgroundColor = `rgb(${rgbMatch.join(',')})`;
+        }
     }
 
     swatch.dataset.color = colorInfo.rgb;
@@ -243,8 +265,24 @@ function selectColor(colorInfo) {
     const preview = document.getElementById('current-color-preview');
     const name = document.getElementById('current-color-name');
 
-    const rgbMatch = colorInfo.rgb.match(/\d+/g);
-    if (rgbMatch) preview.style.backgroundColor = `rgb(${rgbMatch.join(',')})`;
+    // 特殊处理透明颜色的预览
+    if (colorInfo.isTransparent) {
+        preview.style.backgroundImage = `
+            linear-gradient(45deg, #ccc 25%, transparent 25%),
+            linear-gradient(-45deg, #ccc 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #ccc 75%),
+            linear-gradient(-45deg, transparent 75%, #ccc 75%)
+        `;
+        preview.style.backgroundSize = '12px 12px';
+        preview.style.backgroundPosition = '0 0, 0 6px, 6px -6px, -6px 0px';
+        preview.style.backgroundColor = '#fff';
+    } else {
+        const rgbMatch = colorInfo.rgb.match(/\d+/g);
+        if (rgbMatch) {
+            preview.style.backgroundImage = 'none';
+            preview.style.backgroundColor = `rgb(${rgbMatch.join(',')})`;
+        }
+    }
     name.textContent = colorInfo.name;
 }
 
@@ -324,7 +362,8 @@ function drawPixel(x, y) {
             const py = y + dy;
             
             if (px >= 0 && px < state.canvasWidth && py >= 0 && py < state.canvasHeight) {
-                if (state.currentTool === 'eraser') {
+                // 如果当前颜色是透明或橡皮擦工具，清除像素
+                if (state.currentTool === 'eraser' || state.currentColor === 'transparent') {
                     state.canvasData[py][px] = null;
                 } else if (state.currentColor) {
                     state.canvasData[py][px] = state.currentColor;
@@ -362,7 +401,8 @@ function drawLine(x0, y0, x1, y1, color) {
                 const px = x0 + bx;
                 const py = y0 + by;
                 if (px >= 0 && px < state.canvasWidth && py >= 0 && py < state.canvasHeight) {
-                    state.canvasData[py][px] = color;
+                    // 如果颜色是透明，清除像素
+                    state.canvasData[py][px] = (color === 'transparent' || color === null) ? null : color;
                 }
             }
         }
@@ -436,6 +476,7 @@ function floodFill(startX, startY, fillColor) {
     if (startX < 0 || startX >= state.canvasWidth || startY < 0 || startY >= state.canvasHeight) return;
 
     const targetColor = state.canvasData[startY][startX];
+    // 允许用透明色填充
     if (targetColor === fillColor) return;
 
     const stack = [[startX, startY]];
@@ -450,7 +491,8 @@ function floodFill(startX, startY, fillColor) {
         if (state.canvasData[y][x] !== targetColor) continue;
 
         visited.add(key);
-        state.canvasData[y][x] = fillColor;
+        // 如果填充色是透明，设置为null
+        state.canvasData[y][x] = (fillColor === 'transparent') ? null : fillColor;
         stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
     }
 }
