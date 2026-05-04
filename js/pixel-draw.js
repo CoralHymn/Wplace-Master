@@ -30,7 +30,10 @@ const state = {
     pinchStartPanX: 0,
     pinchStartPanY: 0,
     importedImage: null,
-    canvasBgColor: '#f8f4f0'
+    canvasBgColor: '#f8f4f0',
+    // 用于优化性能
+    needsRender: false,
+    rafId: null
 };
 
 // DOM元素
@@ -248,10 +251,23 @@ function selectColor(colorInfo) {
  * 更新画布变换
  */
 function updateCanvasTransform() {
-    // 使用 CSS transform 进行缩放和平移，更加流畅
-    const scale = state.zoom;
-    canvas.style.transform = `translate(${state.panOffsetX}px, ${state.panOffsetY}px) scale(${scale})`;
+    // 完全按照 index.html 的方式
+    // canvas 保持原始尺寸，使用 transform 进行缩放和平移
+    canvas.style.transform = `translate(${state.panOffsetX}px, ${state.panOffsetY}px) scale(${state.zoom})`;
     canvas.style.transformOrigin = '0 0';
+}
+
+/**
+ * 优化的更新函数 - 使用 requestAnimationFrame
+ */
+function scheduleUpdate() {
+    if (state.rafId) return; // 已经有待处理的帧
+    
+    state.rafId = requestAnimationFrame(() => {
+        updateCanvasTransform();
+        updateZoomDisplay();
+        state.rafId = null;
+    });
 }
 
 /**
@@ -488,7 +504,8 @@ function downloadPNG() {
  * 更新缩放显示
  */
 function updateZoomDisplay() {
-    document.getElementById('zoom-level').textContent = state.zoom + 'x';
+    // 只显示小数点后一位
+    document.getElementById('zoom-level').textContent = state.zoom.toFixed(1) + 'x';
 }
 
 /**
@@ -549,6 +566,13 @@ function initEventListeners() {
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             state.currentTool = btn.dataset.tool;
+            
+            // 根据工具更新光标
+            if (state.currentTool === 'move') {
+                canvas.style.cursor = 'grab';
+            } else {
+                canvas.style.cursor = 'crosshair';
+            }
         });
     });
 
@@ -619,6 +643,16 @@ function handleMouseDown(e) {
         return;
     }
 
+    // 左键 + 移动工具 = 平移画布
+    if (e.button === 0 && state.currentTool === 'move') {
+        e.preventDefault();
+        state.isPanning = true;
+        state.panStartX = e.clientX - state.panOffsetX;
+        state.panStartY = e.clientY - state.panOffsetY;
+        canvas.style.cursor = 'grabbing';
+        return;
+    }
+
     if (e.button !== 0) return;
     e.stopPropagation();
     const { x, y } = getCanvasCoords(e);
@@ -681,10 +715,15 @@ function handleMouseMove(e) {
 }
 
 function handleMouseUp(e) {
-    // 右键拖拽结束
+    // 右键拖拽结束或移动工具结束
     if (state.isPanning) {
         state.isPanning = false;
-        canvas.style.cursor = 'crosshair';
+        // 根据当前工具恢复光标
+        if (state.currentTool === 'move') {
+            canvas.style.cursor = 'grab';
+        } else {
+            canvas.style.cursor = 'crosshair';
+        }
         return;
     }
 
@@ -698,19 +737,24 @@ function handleContainerMouseDown(e) {
     state.isPanning = true;
     state.panStartX = e.clientX - state.panOffsetX;
     state.panStartY = e.clientY - state.panOffsetY;
-    canvasViewport.style.cursor = 'grabbing';
+    canvas.style.cursor = 'grabbing';
 }
 
 function handleContainerMouseMove(e) {
     if (!state.isPanning) return;
     state.panOffsetX = e.clientX - state.panStartX;
     state.panOffsetY = e.clientY - state.panStartY;
-    updateCanvasTransform();
+    scheduleUpdate();
 }
 
 function handleContainerMouseUp() {
     state.isPanning = false;
-    canvasViewport.style.cursor = '';
+    // 根据当前工具恢复光标
+    if (state.currentTool === 'move') {
+        canvas.style.cursor = 'grab';
+    } else {
+        canvas.style.cursor = 'crosshair';
+    }
 }
 
 function handleWheel(e) {
@@ -718,18 +762,21 @@ function handleWheel(e) {
     const zoomFactor = 1.1;
     const oldZoom = state.zoom;
 
+    // 计算新的缩放级别
     state.zoom *= (e.deltaY < 0 ? zoomFactor : 1 / zoomFactor);
     state.zoom = Math.max(1, Math.min(80, state.zoom));
 
-    const rect = canvas.getBoundingClientRect();
+    // 获取视口（canvas-container）的位置 - 与 index.html 一致
+    const viewport = document.getElementById('canvas-container');
+    const rect = viewport.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    const ratio = state.zoom / oldZoom;
-    state.panOffsetX = mouseX - (mouseX - state.panOffsetX) * ratio;
-    state.panOffsetY = mouseY - (mouseY - state.panOffsetY) * ratio;
 
-    updateCanvasTransform();
-    updateZoomDisplay();
+    // 完全按照 index.html 的公式
+    state.panOffsetX = mouseX - (mouseX - state.panOffsetX) * (state.zoom / oldZoom);
+    state.panOffsetY = mouseY - (mouseY - state.panOffsetY) * (state.zoom / oldZoom);
+
+    scheduleUpdate();
 }
 
 function handleTouchStart(e) {
@@ -748,6 +795,16 @@ function handleTouchStart(e) {
     if (e.touches.length === 1) {
         e.preventDefault();
         const touch = e.touches[0];
+
+        // 如果是移动工具，启动平移模式
+        if (state.currentTool === 'move') {
+            state.isPanning = true;
+            state.panStartX = touch.clientX - state.panOffsetX;
+            state.panStartY = touch.clientY - state.panOffsetY;
+            canvas.style.cursor = 'grabbing';
+            return;
+        }
+
         const { x, y } = getCanvasCoords(touch);
 
         if (state.currentTool === 'fill') {
@@ -784,34 +841,42 @@ function handleTouchMove(e) {
         const currentDistance = getTouchDistance(e.touches);
         const scale = currentDistance / state.pinchStartDistance;
         
-        // 计算新的双指中心点
+        // 计算新的双指中心点（相对于视口）
+        const viewport = document.getElementById('canvas-container');
+        const viewportRect = viewport.getBoundingClientRect();
+        
         const currentCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         const currentCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         
-        // 计算中心点移动距离
-        const deltaX = currentCenterX - state.pinchStartCenterX;
-        const deltaY = currentCenterY - state.pinchStartCenterY;
-        
-        // 获取画布边界矩形
-        const rect = canvas.getBoundingClientRect();
-        const canvasCenterX = rect.left + rect.width / 2;
-        const canvasCenterY = rect.top + rect.height / 2;
-        
-        // 计算相对于画布中心的鼠标位置
-        const mouseX = currentCenterX - canvasCenterX;
-        const mouseY = currentCenterY - canvasCenterY;
+        // 相对于视口的位置
+        const mouseX = currentCenterX - viewportRect.left;
+        const mouseY = currentCenterY - viewportRect.top;
         
         // 应用缩放
         const oldZoom = state.zoom;
         state.zoom = Math.max(1, Math.min(80, Math.round(state.pinchStartZoom * scale)));
-        const ratio = state.zoom / oldZoom;
         
-        // 计算新的平移偏移
-        state.panOffsetX = state.pinchStartPanX + deltaX + mouseX * (1 - ratio);
-        state.panOffsetY = state.pinchStartPanY + deltaY + mouseY * (1 - ratio);
+        // 计算中心点移动距离（相对于初始位置）
+        const startMouseX = state.pinchStartCenterX - viewportRect.left;
+        const startMouseY = state.pinchStartCenterY - viewportRect.top;
+        const deltaX = mouseX - startMouseX;
+        const deltaY = mouseY - startMouseY;
         
-        updateCanvasTransform();
-        updateZoomDisplay();
+        // 使用与滚轮相同的公式，但需要考虑手指移动
+        state.panOffsetX = mouseX - (mouseX - (state.pinchStartPanX + deltaX)) * (state.zoom / oldZoom);
+        state.panOffsetY = mouseY - (mouseY - (state.pinchStartPanY + deltaY)) * (state.zoom / oldZoom);
+        
+        scheduleUpdate();
+        return;
+    }
+
+    // 移动工具的平移处理
+    if (e.touches.length === 1 && state.isPanning) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        state.panOffsetX = touch.clientX - state.panStartX;
+        state.panOffsetY = touch.clientY - state.panStartY;
+        scheduleUpdate();
         return;
     }
 
@@ -828,6 +893,16 @@ function handleTouchMove(e) {
 
 function handleTouchEnd() {
     state.isDrawing = false;
+    // 清除移动工具的平移状态
+    if (state.isPanning) {
+        state.isPanning = false;
+        // 根据当前工具恢复光标
+        if (state.currentTool === 'move') {
+            canvas.style.cursor = 'grab';
+        } else {
+            canvas.style.cursor = 'crosshair';
+        }
+    }
 }
 
 function getTouchDistance(touches) {
@@ -844,6 +919,7 @@ function handleKeyDown(e) {
     }
 
     switch (e.key.toLowerCase()) {
+        case 'm': document.querySelector('[data-tool="move"]')?.click(); break;
         case 'b': document.querySelector('[data-tool="pencil"]')?.click(); break;
         case 'e': document.querySelector('[data-tool="eraser"]')?.click(); break;
         case 'g': document.querySelector('[data-tool="fill"]')?.click(); break;
@@ -922,16 +998,14 @@ function handleBackToConverter() {
  * 画布回归中心
  */
 function centerCanvas() {
-    const container = document.getElementById('canvas-container');
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
-    
+    // 完全按照 index.html 的 centerImage 方式
+    const viewport = document.getElementById('canvas-container');
+    const viewportRect = viewport.getBoundingClientRect();
     const canvasWidth = state.canvasWidth * state.zoom;
     const canvasHeight = state.canvasHeight * state.zoom;
-    
-    // 计算居中位置
-    state.panOffsetX = (containerWidth - canvasWidth) / 2;
-    state.panOffsetY = (containerHeight - canvasHeight) / 2;
+
+    state.panOffsetX = (viewportRect.width - canvasWidth) / 2;
+    state.panOffsetY = (viewportRect.height - canvasHeight) / 2;
     
     updateCanvasTransform();
 }
