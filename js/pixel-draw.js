@@ -540,6 +540,101 @@ function clearCanvas() {
 }
 
 /**
+ * 自动描边功能
+ * @param {string} outlineType - 'inner'（内边线）或 'outer'（外边线）或 'both'（内外边线）
+ */
+function autoOutline(outlineType = 'both') {
+    if (!state.currentColor || state.currentColor === 'transparent') {
+        alert('请先选择一个颜色！');
+        return;
+    }
+
+    saveState();
+    
+    const newCanvasData = JSON.parse(JSON.stringify(state.canvasData));
+    const width = state.canvasWidth;
+    const height = state.canvasHeight;
+    
+    // 遍历所有像素，检测边缘
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const isOpaque = state.canvasData[y][x] !== null;
+            
+            if (outlineType === 'inner' || outlineType === 'both') {
+                // 内边线：在不透明像素上，如果周围有透明像素，则绘制边线
+                if (isOpaque && hasTransparentNeighbor(x, y)) {
+                    newCanvasData[y][x] = state.currentColor;
+                }
+            }
+            
+            if (outlineType === 'outer' || outlineType === 'both') {
+                // 外边线：在透明像素上，如果周围有不透明像素，则绘制边线
+                if (!isOpaque && hasOpaqueNeighbor(x, y)) {
+                    newCanvasData[y][x] = state.currentColor;
+                }
+            }
+        }
+    }
+    
+    state.canvasData = newCanvasData;
+    renderCanvas();
+}
+
+/**
+ * 检查像素是否有透明邻居（8方向）
+ */
+function hasTransparentNeighbor(x, y) {
+    const neighbors = [
+        [-1, -1], [0, -1], [1, -1],
+        [-1, 0],           [1, 0],
+        [-1, 1],  [0, 1],  [1, 1]
+    ];
+    
+    for (const [dx, dy] of neighbors) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        // 边界外的视为透明
+        if (nx < 0 || nx >= state.canvasWidth || ny < 0 || ny >= state.canvasHeight) {
+            return true;
+        }
+        
+        if (state.canvasData[ny][nx] === null) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * 检查像素是否有不透明邻居（8方向）
+ */
+function hasOpaqueNeighbor(x, y) {
+    const neighbors = [
+        [-1, -1], [0, -1], [1, -1],
+        [-1, 0],           [1, 0],
+        [-1, 1],  [0, 1],  [1, 1]
+    ];
+    
+    for (const [dx, dy] of neighbors) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        // 边界外不算
+        if (nx < 0 || nx >= state.canvasWidth || ny < 0 || ny >= state.canvasHeight) {
+            continue;
+        }
+        
+        if (state.canvasData[ny][nx] !== null) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
  * 导出PNG
  */
 function downloadPNG() {
@@ -645,6 +740,11 @@ function initEventListeners() {
     document.getElementById('redo-btn').addEventListener('click', redo);
     document.getElementById('clear-btn').addEventListener('click', clearCanvas);
     document.getElementById('download-btn').addEventListener('click', downloadPNG);
+
+    // 自动描边按钮 - 点击弹出选项
+    document.getElementById('outline-btn').addEventListener('click', () => {
+        showOutlineOptions();
+    });
 
     document.getElementById('grid-toggle').addEventListener('click', () => {
         state.showGrid = !state.showGrid;
@@ -1005,6 +1105,10 @@ function handleKeyDown(e) {
         case 'l': document.querySelector('[data-tool="line"]')?.click(); break;
         case 'r': document.querySelector('[data-tool="rect"]')?.click(); break;
         case 'c': document.querySelector('[data-tool="circle"]')?.click(); break;
+        case 'o': 
+            e.preventDefault();
+            showOutlineOptions();
+            break;
         case '[': 
             e.preventDefault();
             state.brushSize = Math.max(1, state.brushSize - 1);
@@ -1069,6 +1173,59 @@ function showConfirmDialog(message, onConfirm) {
     dialog.querySelector('.confirm').addEventListener('click', () => {
         document.body.removeChild(dialog);
         if (onConfirm) onConfirm();
+    });
+    
+    // 点击背景关闭
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) {
+            document.body.removeChild(dialog);
+        }
+    });
+}
+
+/**
+ * 显示描边选项对话框
+ */
+function showOutlineOptions() {
+    const dialog = document.createElement('div');
+    dialog.className = 'confirm-dialog-overlay';
+    dialog.innerHTML = `
+        <div class="confirm-dialog outline-dialog">
+            <div class="confirm-message">选择描边类型</div>
+            <div class="outline-options">
+                <button class="outline-option-btn" data-type="inner">
+                    <div class="option-icon inner-icon"></div>
+                    <div class="option-label">内边线</div>
+                </button>
+                <button class="outline-option-btn" data-type="outer">
+                    <div class="option-icon outer-icon"></div>
+                    <div class="option-label">外边线</div>
+                </button>
+                <button class="outline-option-btn" data-type="both">
+                    <div class="option-icon both-icon"></div>
+                    <div class="option-label">内外边线</div>
+                </button>
+            </div>
+            <div class="confirm-buttons">
+                <button class="confirm-btn cancel">取消</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    // 选项按钮事件
+    dialog.querySelectorAll('.outline-option-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const type = btn.dataset.type;
+            document.body.removeChild(dialog);
+            autoOutline(type);
+        });
+    });
+    
+    // 取消按钮
+    dialog.querySelector('.cancel').addEventListener('click', () => {
+        document.body.removeChild(dialog);
     });
     
     // 点击背景关闭
