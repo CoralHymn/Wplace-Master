@@ -724,12 +724,14 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function adjustContrast(imageData, contrast) {
         const data = imageData.data;
-        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+        // 将百分比转换为对比度因子：100% -> 1.0, 0% -> 0.0, 200% -> 2.0
+        const factor = contrast / 100;
         
         for (let i = 0; i < data.length; i += 4) {
-            data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));     // R
-            data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128)); // G
-            data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128)); // B
+            // 使用线性对比度调整：以128为中心点
+            data[i] = Math.min(255, Math.max(0, 128 + (data[i] - 128) * factor));     // R
+            data[i + 1] = Math.min(255, Math.max(0, 128 + (data[i + 1] - 128) * factor)); // G
+            data[i + 2] = Math.min(255, Math.max(0, 128 + (data[i + 2] - 128) * factor)); // B
         }
         
         return imageData;
