@@ -43,6 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
         brightness: 100,
         contrast: 100,
         saturation: 100,
+        sharpness: 0,
+        hue: 0,
         // 实时调整开关
         realtimeEnabled: true,
         // 参与人数
@@ -81,9 +83,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const brightnessSlider = document.getElementById('brightness');
     const contrastSlider = document.getElementById('contrast');
     const saturationSlider = document.getElementById('saturation');
+    const sharpnessSlider = document.getElementById('sharpness');
+    const hueSlider = document.getElementById('hue');
     const brightnessValue = document.getElementById('brightness-value');
     const contrastValue = document.getElementById('contrast-value');
     const saturationValue = document.getElementById('saturation-value');
+    const sharpnessValue = document.getElementById('sharpness-value');
+    const hueValue = document.getElementById('hue-value');
     const resetImageAdjustmentsBtn = document.getElementById('reset-image-adjustments');
 
     // 颜色选择和替换相关DOM元素
@@ -282,6 +288,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 saturationInput.addEventListener('input', handleSaturationInputChange);
             }
         }
+        if (sharpnessSlider) {
+            sharpnessSlider.addEventListener('input', handleSharpnessChange);
+            const sharpnessInput = document.getElementById('sharpness-value');
+            if (sharpnessInput) {
+                sharpnessInput.addEventListener('change', handleSharpnessInputChange);
+                sharpnessInput.addEventListener('input', handleSharpnessInputChange);
+            }
+        }
+        if (hueSlider) {
+            hueSlider.addEventListener('input', handleHueChange);
+            const hueInput = document.getElementById('hue-value');
+            if (hueInput) {
+                hueInput.addEventListener('change', handleHueInputChange);
+                hueInput.addEventListener('input', handleHueInputChange);
+            }
+        }
         if (resetImageAdjustmentsBtn) resetImageAdjustmentsBtn.addEventListener('click', resetImageAdjustments);
     }
 
@@ -329,6 +351,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const saturationLabel = document.getElementById('saturation-label');
         if (saturationLabel) saturationLabel.textContent = t.saturation || 'Saturation';
+
+        const sharpnessLabel = document.getElementById('sharpness-label');
+        if (sharpnessLabel) sharpnessLabel.textContent = t.sharpness || 'Sharpness';
+
+        const hueLabel = document.getElementById('hue-label');
+        if (hueLabel) hueLabel.textContent = t.hue || 'Hue';
 
         const widthLabel = document.querySelector('label[for="image-width"]');
         if (widthLabel) widthLabel.textContent = t.width + ':';
@@ -696,12 +724,14 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function adjustContrast(imageData, contrast) {
         const data = imageData.data;
-        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+        // 将百分比转换为对比度因子：100% -> 1.0, 0% -> 0.0, 200% -> 2.0
+        const factor = contrast / 100;
         
         for (let i = 0; i < data.length; i += 4) {
-            data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));     // R
-            data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128)); // G
-            data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128)); // B
+            // 使用线性对比度调整：以128为中心点
+            data[i] = Math.min(255, Math.max(0, 128 + (data[i] - 128) * factor));     // R
+            data[i + 1] = Math.min(255, Math.max(0, 128 + (data[i + 1] - 128) * factor)); // G
+            data[i + 2] = Math.min(255, Math.max(0, 128 + (data[i + 2] - 128) * factor)); // B
         }
         
         return imageData;
@@ -734,6 +764,92 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * 锐化处理
+     * @param {ImageData} imageData - 原始图像数据
+     * @param {number} sharpness - 锐化强度 (0-100)
+     */
+    function adjustSharpness(imageData, sharpness) {
+        if (sharpness === 0) return imageData;
+        
+        const width = imageData.width;
+        const height = imageData.height;
+        const data = imageData.data;
+        const originalData = new Uint8ClampedArray(data);
+        
+        // 锐化强度因子 (0-1)
+        const amount = sharpness / 100;
+        
+        // 使用简单的3x3卷积核进行锐化
+        // 卷积核: [0 -1 0; -1 5 -1; 0 -1 0]
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                for (let c = 0; c < 3; c++) { // RGB通道
+                    const idx = (y * width + x) * 4 + c;
+                    
+                    // 获取周围像素
+                    const center = originalData[idx];
+                    const top = originalData[((y - 1) * width + x) * 4 + c];
+                    const bottom = originalData[((y + 1) * width + x) * 4 + c];
+                    const left = originalData[(y * width + (x - 1)) * 4 + c];
+                    const right = originalData[(y * width + (x + 1)) * 4 + c];
+                    
+                    // 应用锐化卷积
+                    const sharpened = 5 * center - top - bottom - left - right;
+                    
+                    // 混合原始值和锐化值
+                    data[idx] = Math.min(255, Math.max(0, center + (sharpened - center) * amount));
+                }
+            }
+        }
+        
+        return imageData;
+    }
+
+    /**
+     * 调整色相
+     * @param {ImageData} imageData - 原始图像数据
+     * @param {number} hueShift - 色相偏移 (-180 to 180)
+     */
+    function adjustHue(imageData, hueShift) {
+        if (hueShift === 0) return imageData;
+        
+        const data = imageData.data;
+        const hueRad = (hueShift * Math.PI) / 180;
+        
+        // 预计算旋转矩阵
+        const cosH = Math.cos(hueRad);
+        const sinH = Math.sin(hueRad);
+        
+        // 色相旋转矩阵（基于ITU-R BT.709标准）
+        const matrix = [
+            0.213 + 0.787 * cosH - 0.213 * sinH,
+            0.715 - 0.715 * cosH - 0.715 * sinH,
+            0.072 - 0.072 * cosH + 0.928 * sinH,
+            
+            0.213 - 0.213 * cosH + 0.143 * sinH,
+            0.715 + 0.285 * cosH + 0.140 * sinH,
+            0.072 - 0.072 * cosH - 0.283 * sinH,
+            
+            0.213 - 0.213 * cosH - 0.787 * sinH,
+            0.715 - 0.715 * cosH + 0.715 * sinH,
+            0.072 + 0.928 * cosH + 0.072 * sinH
+        ];
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            
+            // 应用色相旋转
+            data[i] = Math.min(255, Math.max(0, matrix[0] * r + matrix[1] * g + matrix[2] * b));
+            data[i + 1] = Math.min(255, Math.max(0, matrix[3] * r + matrix[4] * g + matrix[5] * b));
+            data[i + 2] = Math.min(255, Math.max(0, matrix[6] * r + matrix[7] * g + matrix[8] * b));
+        }
+        
+        return imageData;
+    }
+
+    /**
      * 应用所有图片处理效果
      * @param {HTMLImageElement} img - 原始图片
      * @returns {ImageData} 处理后的图像数据
@@ -751,10 +867,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // 获取图像数据
         let imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
         
-        // 按顺序应用调整：亮度 -> 对比度 -> 饱和度
+        // 按顺序应用调整：亮度 -> 对比度 -> 饱和度 -> 锐化 -> 色相
         imageData = adjustBrightness(imageData, state.brightness);
         imageData = adjustContrast(imageData, state.contrast);
         imageData = adjustSaturation(imageData, state.saturation);
+        imageData = adjustSharpness(imageData, state.sharpness);
+        imageData = adjustHue(imageData, state.hue);
         
         return imageData;
     }
@@ -853,24 +971,80 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * 处理锐化变化（滑块）
+     */
+    function handleSharpnessChange(e) {
+        state.sharpness = parseInt(e.target.value);
+        const el = document.getElementById('sharpness-value');
+        if (el) el.value = state.sharpness;
+        smartUpdatePreview();
+    }
+
+    /**
+     * 处理锐化变化（数字输入框）
+     */
+    function handleSharpnessInputChange(e) {
+        let value = parseInt(e.target.value, 10);
+        if (isNaN(value)) value = 0;
+        if (value < 0) value = 0;
+        if (value > 100) value = 100;
+        
+        state.sharpness = value;
+        sharpnessSlider.value = value;
+        smartUpdatePreview();
+    }
+
+    /**
+     * 处理色相变化（滑块）
+     */
+    function handleHueChange(e) {
+        state.hue = parseInt(e.target.value);
+        const el = document.getElementById('hue-value');
+        if (el) el.value = state.hue;
+        smartUpdatePreview();
+    }
+
+    /**
+     * 处理色相变化（数字输入框）
+     */
+    function handleHueInputChange(e) {
+        let value = parseInt(e.target.value, 10);
+        if (isNaN(value)) value = 0;
+        if (value < -180) value = -180;
+        if (value > 180) value = 180;
+        
+        state.hue = value;
+        hueSlider.value = value;
+        smartUpdatePreview();
+    }
+
+    /**
      * 重置所有图片调整
      */
     function resetImageAdjustments() {
         state.brightness = 100;
         state.contrast = 100;
         state.saturation = 100;
+        state.sharpness = 0;
+        state.hue = 0;
         
         brightnessSlider.value = 100;
         contrastSlider.value = 100;
         saturationSlider.value = 100;
+        sharpnessSlider.value = 0;
+        hueSlider.value = 0;
         
         const brightnessEl = document.getElementById('brightness-value');
         const contrastEl = document.getElementById('contrast-value');
         const saturationEl = document.getElementById('saturation-value');
+        const sharpnessEl = document.getElementById('sharpness-value');
+        const hueEl = document.getElementById('hue-value');
         
         if (brightnessEl) brightnessEl.value = 100;
         if (contrastEl) contrastEl.value = 100;
         if (saturationEl) saturationEl.value = 100;
+        if (sharpnessEl) sharpnessEl.value = 0;
+        if (hueEl) hueEl.value = 0;
         
         smartUpdatePreview();
     }
@@ -944,9 +1118,9 @@ document.addEventListener('DOMContentLoaded', () => {
         previewCanvas.width = newWidth;
         previewCanvas.height = newHeight;
 
-        // 应用图片处理（亮度、对比度、饱和度）
+        // 应用图片处理（亮度、对比度、饱和度、锐化、色相）
         let sourceImageData;
-        if (state.brightness !== 100 || state.contrast !== 100 || state.saturation !== 100) {
+        if (state.brightness !== 100 || state.contrast !== 100 || state.saturation !== 100 || state.sharpness !== 0 || state.hue !== 0) {
             // 先调整原始图片
             const adjustedImageData = applyImageAdjustments(state.inputImage);
             // 将调整后的数据绘制到canvas并缩放
