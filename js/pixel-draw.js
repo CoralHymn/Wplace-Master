@@ -260,7 +260,9 @@ function selectColor(colorInfo) {
 
     document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
     const activeSwatch = document.querySelector(`.color-swatch[data-color="${colorInfo.rgb}"]`);
-    if (activeSwatch) activeSwatch.classList.add('active');
+    if (activeSwatch) {
+        activeSwatch.classList.add('active');
+    }
 
     const preview = document.getElementById('current-color-preview');
     const name = document.getElementById('current-color-name');
@@ -759,7 +761,10 @@ function initEventListeners() {
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mouseup', handleMouseUp);
-    canvas.addEventListener('mouseleave', handleMouseUp);
+    canvas.addEventListener('mouseleave', () => {
+        canvas.title = '';
+        handleMouseUp();
+    });
 
     const container = document.getElementById('canvas-container');
     container.addEventListener('mousedown', handleContainerMouseDown);
@@ -912,9 +917,29 @@ function handleMouseDown(e) {
         if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
             const color = state.canvasData[y][x];
             if (color) {
+                // 尝试在色板中查找匹配的颜色
+                let found = false;
                 for (const [rgb, info] of Object.entries(COLOR_INFO)) {
-                    if (rgb === color) { selectColor(info); break; }
+                    if (rgb === color) {
+                        // 重要：需要把rgb字段添加到info对象中
+                        selectColor({ ...info, rgb: rgb });
+                        showNotification(`已选取: ${info.name}`);
+                        found = true;
+                        break;
+                    }
                 }
+                // 如果色板中没有这个颜色，创建一个临时颜色
+                if (!found) {
+                    const tempColorInfo = {
+                        rgb: color,
+                        name: color,
+                        isPaid: false
+                    };
+                    selectColor(tempColorInfo);
+                    showNotification(`已选取自定义颜色`);
+                }
+            } else {
+                showNotification('该位置是透明的');
             }
         }
         return;
@@ -937,6 +962,22 @@ function handleMouseDown(e) {
 }
 
 function handleMouseMove(e) {
+    // 取色器模式：显示颜色提示
+    if (state.currentTool === 'picker') {
+        const { x, y } = getCanvasCoords(e);
+        if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
+            const color = state.canvasData[y][x];
+            if (color) {
+                canvas.style.cursor = 'crosshair';
+                canvas.title = `颜色: ${color}`;
+            } else {
+                canvas.style.cursor = 'crosshair';
+                canvas.title = '透明';
+            }
+        }
+        return;
+    }
+
     if (!state.isDrawing) return;
 
     const { x, y } = getCanvasCoords(e);
@@ -959,6 +1000,9 @@ function handleMouseMove(e) {
 }
 
 function handleMouseUp(e) {
+    // 清除取色器的title提示
+    canvas.title = '';
+    
     // 右键拖拽结束或移动工具结束
     if (state.isPanning) {
         state.isPanning = false;
@@ -1075,9 +1119,29 @@ function handleTouchStart(e) {
             if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
                 const color = state.canvasData[y][x];
                 if (color) {
+                    // 尝试在色板中查找匹配的颜色
+                    let found = false;
                     for (const [rgb, info] of Object.entries(COLOR_INFO)) {
-                        if (rgb === color) { selectColor(info); break; }
+                        if (rgb === color) {
+                            // 重要：需要把rgb字段添加到info对象中
+                            selectColor({ ...info, rgb: rgb });
+                            showNotification(`已选取: ${info.name}`);
+                            found = true;
+                            break;
+                        }
                     }
+                    // 如果色板中没有这个颜色，创建一个临时颜色
+                    if (!found) {
+                        const tempColorInfo = {
+                            rgb: color,
+                            name: color,
+                            isPaid: false
+                        };
+                        selectColor(tempColorInfo);
+                        showNotification(`已选取自定义颜色`);
+                    }
+                } else {
+                    showNotification('该位置是透明的');
                 }
             }
             return;
