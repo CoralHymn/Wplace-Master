@@ -945,10 +945,13 @@ function handleMouseDown(e) {
         return;
     }
 
-    if (state.currentTool === 'rect' || state.currentTool === 'circle') {
+    if (state.currentTool === 'rect' || state.currentTool === 'circle' || state.currentTool === 'line') {
+        console.log('形状工具被点击:', state.currentTool, '坐标:', x, y);
         state.isDrawing = true;
         state.startShapeX = x;
         state.startShapeY = y;
+        state.lastX = x;
+        state.lastY = y;
         saveState();
         return;
     }
@@ -982,10 +985,16 @@ function handleMouseMove(e) {
 
     const { x, y } = getCanvasCoords(e);
 
-    if (state.currentTool === 'line' || state.currentTool === 'pencil' || state.currentTool === 'eraser') {
+    if (state.currentTool === 'pencil' || state.currentTool === 'eraser') {
         drawLine(state.lastX, state.lastY, x, y, state.currentTool === 'eraser' ? null : state.currentColor);
         state.lastX = x;
         state.lastY = y;
+        renderCanvas();
+    } else if (state.currentTool === 'line') {
+        console.log('绘制直线:', state.startShapeX, state.startShapeY, '->', x, y);
+        // 直线工具：恢复原始状态，然后绘制从起点到当前点的直线
+        state.canvasData = JSON.parse(JSON.stringify(state.undoStack[state.undoStack.length - 1]));
+        drawLine(state.startShapeX, state.startShapeY, x, y, state.currentColor);
         renderCanvas();
     } else if (state.currentTool === 'rect') {
         state.canvasData = JSON.parse(JSON.stringify(state.undoStack[state.undoStack.length - 1]));
@@ -1205,9 +1214,16 @@ function handleTouchMove(e) {
         e.preventDefault();
         const touch = e.touches[0];
         const { x, y } = getCanvasCoords(touch);
-        drawLine(state.lastX, state.lastY, x, y, state.currentTool === 'eraser' ? null : state.currentColor);
-        state.lastX = x;
-        state.lastY = y;
+        
+        if (state.currentTool === 'line') {
+            // 直线工具：恢复原始状态，然后绘制从起点到当前点的直线
+            state.canvasData = JSON.parse(JSON.stringify(state.undoStack[state.undoStack.length - 1]));
+            drawLine(state.startShapeX, state.startShapeY, x, y, state.currentColor);
+        } else if (state.currentTool === 'pencil' || state.currentTool === 'eraser') {
+            drawLine(state.lastX, state.lastY, x, y, state.currentTool === 'eraser' ? null : state.currentColor);
+            state.lastX = x;
+            state.lastY = y;
+        }
         renderCanvas();
     }
 }
