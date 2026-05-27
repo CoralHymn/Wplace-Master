@@ -1018,3 +1018,120 @@ body {
         transform: translateX(-50%) translateY(-20px);
     }
 }
+
+/* ==================== 创建画布对话框样式 ==================== */
+.create-canvas-dialog {
+    min-width: 380px;
+    max-width: 450px;
+}
+
+.create-canvas-inputs {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.canvas-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.canvas-input-group label {
+    font-size: 13px;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.canvas-size-input {
+    width: 100px;
+    padding: 10px 12px;
+    font-size: 16px;
+    font-weight: 600;
+    text-align: center;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    transition: border-color 0.2s;
+}
+
+.canvas-size-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+}
+
+.canvas-input-sep {
+    font-size: 20px;
+    color: #adb5bd;
+    font-weight: 600;
+    padding-bottom: 14px;
+}
+
+.create-canvas-presets {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 20px;
+    justify-content: center;
+}
+
+.preset-label {
+    font-size: 12px;
+    color: #6c757d;
+    font-weight: 500;
+    margin-right: 4px;
+}
+
+.preset-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #495057;
+    transition: all 0.15s;
+}
+
+.preset-btn:hover {
+    background: #007bff;
+    color: #fff;
+    border-color: #007bff;
+}
+
+@media (max-width: 768px) {
+    .create-canvas-dialog {
+        min-width: auto;
+        width: 90%;
+        max-width: 350px;
+    }
+
+    .create-canvas-inputs {
+        flex-direction: row;
+        gap: 8px;
+    }
+
+    .canvas-size-input {
+        width: 80px;
+        padding: 8px;
+        font-size: 14px;
+    }
+
+    .canvas-input-sep {
+        font-size: 16px;
+        padding-bottom: 10px;
+    }
+
+    .create-canvas-presets {
+        gap: 4px;
+    }
+
+    .preset-btn {
+        padding: 3px 8px;
+        font-size: 11px;
+    }
+}
