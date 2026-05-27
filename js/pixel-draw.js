@@ -1801,6 +1801,7 @@ function deleteLayer() {
         showNotification('至少保留一个图层');
         return;
     }
+    if (!confirm('操作后无法撤销，确认删除该图层吗？')) return;
     saveState();
     state.layers.splice(state.activeLayerIndex, 1);
     if (state.activeLayerIndex >= state.layers.length) {
@@ -1836,6 +1837,7 @@ function mergeDown() {
         showNotification('无法合并：已是最底层');
         return;
     }
+    if (!confirm('操作后无法撤销，确认合并图层吗？')) return;
     saveState();
     const upperLayer = state.layers[state.activeLayerIndex];
     const lowerLayer = state.layers[state.activeLayerIndex - 1];
