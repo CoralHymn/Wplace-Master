@@ -1135,3 +1135,209 @@ body {
         font-size: 11px;
     }
 }
+
+/* ==================== 图层面板样式 ==================== */
+.layers-panel {
+    width: 160px;
+    background: #ffffff;
+    border-left: 1px solid #dee2e6;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.05);
+    transition: width 0.2s ease;
+}
+
+.layers-panel.collapsed {
+    width: 36px;
+}
+
+.layers-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid #dee2e6;
+    flex-shrink: 0;
+}
+
+.layers-panel-header h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+}
+
+.layers-panel.collapsed .layers-panel-header h3,
+.layers-panel.collapsed .layers-list,
+.layers-panel.collapsed .layers-actions {
+    display: none;
+}
+
+.layers-panel-toggle {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 4px;
+    color: #6c757d;
+    transition: all 0.15s;
+}
+
+.layers-panel-toggle:hover {
+    background: #f0f2f5;
+    color: #333;
+}
+
+.layers-panel.collapsed .layers-panel-toggle {
+    margin: 10px auto;
+}
+
+.layers-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 6px;
+}
+
+.layers-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.layers-list::-webkit-scrollbar-thumb {
+    background: #dee2e6;
+    border-radius: 2px;
+}
+
+.layer-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    margin-bottom: 2px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s;
+    user-select: none;
+}
+
+.layer-item:hover {
+    background: #f0f2f5;
+}
+
+.layer-item.active {
+    background: #e7f1ff;
+    border-color: #007bff;
+}
+
+.layer-visibility-btn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: #6c757d;
+    border-radius: 4px;
+    padding: 0;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+
+.layer-visibility-btn:hover {
+    background: #e9ecef;
+    color: #333;
+}
+
+.layer-thumb {
+    width: 32px;
+    height: 32px;
+    border-radius: 3px;
+    border: 1px solid #dee2e6;
+    image-rendering: pixelated;
+    flex-shrink: 0;
+    background: #fff;
+}
+
+.layer-name {
+    font-size: 12px;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+.layers-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px;
+    border-top: 1px solid #dee2e6;
+    flex-shrink: 0;
+    justify-content: center;
+}
+
+.layer-action-btn {
+    width: 30px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #6c757d;
+    padding: 0;
+    transition: all 0.15s;
+}
+
+.layer-action-btn:hover {
+    background: #e9ecef;
+    border-color: #007bff;
+    color: #007bff;
+}
+
+.layer-action-btn:active {
+    transform: scale(0.95);
+}
+
+/* 移动端图层面板适配 */
+@media (max-width: 768px) {
+    .layers-panel {
+        width: 140px;
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 100;
+        box-shadow: -4px 0 16px rgba(0,0,0,0.15);
+    }
+
+    .layers-panel.collapsed {
+        width: 28px;
+    }
+
+    .layer-thumb {
+        width: 28px;
+        height: 28px;
+    }
+
+    .layer-item {
+        padding: 4px 6px;
+        gap: 4px;
+    }
+
+    .layer-action-btn {
+        width: 26px;
+        height: 24px;
+    }
+}

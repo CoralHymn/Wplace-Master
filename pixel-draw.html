@@ -225,6 +225,57 @@
                 <p>这是因部分移动端浏览器策略所添加的占位符</p>
             </footer>
         </div>
+
+        <!-- 图层面板 -->
+        <div class="layers-panel" id="layers-panel">
+            <div class="layers-panel-header">
+                <h3>图层</h3>
+                <div class="layers-panel-toggle" id="layers-panel-close" title="关闭图层面板">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="layers-list" id="layers-list">
+            </div>
+            <div class="layers-actions">
+                <button class="layer-action-btn" id="add-layer-btn" title="新建图层">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </button>
+                <button class="layer-action-btn" id="delete-layer-btn" title="删除图层">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                </button>
+                <button class="layer-action-btn" id="duplicate-layer-btn" title="复制图层">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                </button>
+                <button class="layer-action-btn" id="merge-down-btn" title="向下合并">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="17 11 12 6 7 11"/>
+                        <polyline points="17 18 12 13 7 18"/>
+                    </svg>
+                </button>
+                <button class="layer-action-btn" id="move-layer-up-btn" title="上移图层">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="18 15 12 9 6 15"/>
+                    </svg>
+                </button>
+                <button class="layer-action-btn" id="move-layer-down-btn" title="下移图层">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
     </div>
 
     <script src="js/pixel-draw.js"></script>

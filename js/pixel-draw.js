@@ -10,7 +10,9 @@ const state = {
     canvasWidth: 0,
     canvasHeight: 0,
     zoom: 20,
-    canvasData: [],
+    layers: [],
+    activeLayerIndex: 0,
+    nextLayerId: 1,
     undoStack: [],
     redoStack: [],
     isDrawing: false,
@@ -49,6 +51,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initEventListeners();
 });
 
+function getActiveData() {
+    return state.layers[state.activeLayerIndex]?.data || null;
+}
+
 /**
  * 检查是否有从转换器导入的图片
  */
@@ -72,7 +78,15 @@ function checkForImportedImage() {
 function setCanvasSize(width, height) {
     state.canvasWidth = width;
     state.canvasHeight = height;
-    state.canvasData = Array(height).fill(null).map(() => Array(width).fill(null));
+
+    state.layers = [{
+        id: 1,
+        name: '图层 1',
+        visible: true,
+        data: Array(height).fill(null).map(() => Array(width).fill(null))
+    }];
+    state.activeLayerIndex = 0;
+    state.nextLayerId = 2;
 
     canvas.width = width;
     canvas.height = height;
@@ -92,6 +106,7 @@ function setCanvasSize(width, height) {
     updateCanvasTransform();
     updateZoomDisplay();
     updateCanvasSizeInfo();
+    renderLayerList();
     renderCanvas();
 }
 
@@ -106,6 +121,7 @@ function loadImageToCanvas(img) {
 
     tempCtx.drawImage(img, 0, 0, state.canvasWidth, state.canvasHeight);
     const imageData = tempCtx.getImageData(0, 0, state.canvasWidth, state.canvasHeight);
+    const data = getActiveData();
 
     for (let y = 0; y < state.canvasHeight; y++) {
         for (let x = 0; x < state.canvasWidth; x++) {
@@ -117,9 +133,9 @@ function loadImageToCanvas(img) {
 
             if (a > 128) {
                 const color = findClosestColor(r, g, b);
-                state.canvasData[y][x] = color;
+                data[y][x] = color;
             } else {
-                state.canvasData[y][x] = null;
+                data[y][x] = null;
             }
         }
     }
@@ -317,11 +333,14 @@ function scheduleUpdate() {
 function renderCanvas() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    for (let y = 0; y < state.canvasHeight; y++) {
-        for (let x = 0; x < state.canvasWidth; x++) {
-            if (state.canvasData[y][x]) {
-                ctx.fillStyle = state.canvasData[y][x];
-                ctx.fillRect(x, y, 1, 1);
+    for (const layer of state.layers) {
+        if (!layer.visible) continue;
+        for (let y = 0; y < state.canvasHeight; y++) {
+            for (let x = 0; x < state.canvasWidth; x++) {
+                if (layer.data[y][x]) {
+                    ctx.fillStyle = layer.data[y][x];
+                    ctx.fillRect(x, y, 1, 1);
+                }
             }
         }
     }
@@ -356,6 +375,9 @@ function drawGrid() {
 function drawPixel(x, y) {
     if (x < 0 || x >= state.canvasWidth || y < 0 || y >= state.canvasHeight) return;
 
+    const activeData = getActiveData();
+    if (!activeData) return;
+
     const radius = Math.floor(state.brushSize / 2);
     
     for (let dy = -radius; dy <= radius; dy++) {
@@ -366,9 +388,9 @@ function drawPixel(x, y) {
             if (px >= 0 && px < state.canvasWidth && py >= 0 && py < state.canvasHeight) {
                 // 如果当前颜色是透明或橡皮擦工具，清除像素
                 if (state.currentTool === 'eraser' || state.currentColor === 'transparent') {
-                    state.canvasData[py][px] = null;
+                    activeData[py][px] = null;
                 } else if (state.currentColor) {
-                    state.canvasData[py][px] = state.currentColor;
+                    activeData[py][px] = state.currentColor;
                 }
             }
         }
@@ -389,6 +411,9 @@ function getCanvasCoords(e) {
  * Bresenham直线算法（支持笔刷大小）
  */
 function drawLine(x0, y0, x1, y1, color) {
+    const activeData = getActiveData();
+    if (!activeData) return;
+
     const dx = Math.abs(x1 - x0);
     const dy = Math.abs(y1 - y0);
     const sx = x0 < x1 ? 1 : -1;
@@ -404,7 +429,7 @@ function drawLine(x0, y0, x1, y1, color) {
                 const py = y0 + by;
                 if (px >= 0 && px < state.canvasWidth && py >= 0 && py < state.canvasHeight) {
                     // 如果颜色是透明，清除像素
-                    state.canvasData[py][px] = (color === 'transparent' || color === null) ? null : color;
+                    activeData[py][px] = (color === 'transparent' || color === null) ? null : color;
                 }
             }
         }
@@ -420,19 +445,22 @@ function drawLine(x0, y0, x1, y1, color) {
  * 绘制矩形
  */
 function drawRect(x0, y0, x1, y1, color) {
+    const activeData = getActiveData();
+    if (!activeData) return;
+
     const minX = Math.max(0, Math.min(x0, x1));
     const maxX = Math.min(state.canvasWidth - 1, Math.max(x0, x1));
     const minY = Math.max(0, Math.min(y0, y1));
     const maxY = Math.min(state.canvasHeight - 1, Math.max(y0, y1));
 
     for (let x = minX; x <= maxX; x++) {
-        state.canvasData[minY][x] = color;
-        state.canvasData[maxY][x] = color;
+        activeData[minY][x] = color;
+        activeData[maxY][x] = color;
     }
 
     for (let y = minY; y <= maxY; y++) {
-        state.canvasData[y][minX] = color;
-        state.canvasData[y][maxX] = color;
+        activeData[y][minX] = color;
+        activeData[y][maxX] = color;
     }
 }
 
@@ -440,6 +468,9 @@ function drawRect(x0, y0, x1, y1, color) {
  * 绘制圆形
  */
 function drawCircle(cx, cy, radius, color) {
+    const activeData = getActiveData();
+    if (!activeData) return;
+
     let x = radius;
     let y = 0;
     let err = 1 - radius;
@@ -454,7 +485,7 @@ function drawCircle(cx, cy, radius, color) {
 
         points.forEach(([px, py]) => {
             if (px >= 0 && px < state.canvasWidth && py >= 0 && py < state.canvasHeight) {
-                state.canvasData[py][px] = color;
+                activeData[py][px] = color;
             }
         });
     };
@@ -477,7 +508,10 @@ function drawCircle(cx, cy, radius, color) {
 function floodFill(startX, startY, fillColor) {
     if (startX < 0 || startX >= state.canvasWidth || startY < 0 || startY >= state.canvasHeight) return;
 
-    const targetColor = state.canvasData[startY][startX];
+    const activeData = getActiveData();
+    if (!activeData) return;
+
+    const targetColor = activeData[startY][startX];
     // 允许用透明色填充
     if (targetColor === fillColor) return;
 
@@ -490,11 +524,11 @@ function floodFill(startX, startY, fillColor) {
 
         if (visited.has(key)) continue;
         if (x < 0 || x >= state.canvasWidth || y < 0 || y >= state.canvasHeight) continue;
-        if (state.canvasData[y][x] !== targetColor) continue;
+        if (activeData[y][x] !== targetColor) continue;
 
         visited.add(key);
         // 如果填充色是透明，设置为null
-        state.canvasData[y][x] = (fillColor === 'transparent') ? null : fillColor;
+        activeData[y][x] = (fillColor === 'transparent') ? null : fillColor;
         stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
     }
 }
@@ -505,17 +539,20 @@ function floodFill(startX, startY, fillColor) {
 function globalFill(targetColor, fillColor) {
     saveState();
     
+    const activeData = getActiveData();
+    if (!activeData) return;
+
     const width = state.canvasWidth;
     const height = state.canvasHeight;
     let fillCount = 0;
     
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            const currentColor = state.canvasData[y][x];
+            const currentColor = activeData[y][x];
             
             // 如果当前像素颜色与目标颜色相同，则填充
             if (currentColor === targetColor && currentColor !== fillColor) {
-                state.canvasData[y][x] = (fillColor === 'transparent') ? null : fillColor;
+                activeData[y][x] = (fillColor === 'transparent') ? null : fillColor;
                 fillCount++;
             }
         }
@@ -556,7 +593,10 @@ function showNotification(message) {
  * 保存状态
  */
 function saveState() {
-    state.undoStack.push(JSON.parse(JSON.stringify(state.canvasData)));
+    const snapshot = state.layers.map(l => ({
+        data: JSON.parse(JSON.stringify(l.data))
+    }));
+    state.undoStack.push(snapshot);
     if (state.undoStack.length > 50) state.undoStack.shift();
     state.redoStack = [];
 }
@@ -566,9 +606,17 @@ function saveState() {
  */
 function undo() {
     if (state.undoStack.length === 0) return;
-    state.redoStack.push(JSON.parse(JSON.stringify(state.canvasData)));
-    state.canvasData = state.undoStack.pop();
+    const snapshot = state.undoStack.pop();
+    // 保存当前状态到 redo
+    state.redoStack.push(state.layers.map(l => ({
+        data: JSON.parse(JSON.stringify(l.data))
+    })));
+    // 恢复
+    snapshot.forEach((s, i) => {
+        if (state.layers[i]) state.layers[i].data = s.data;
+    });
     renderCanvas();
+    renderLayerList();
 }
 
 /**
@@ -576,9 +624,17 @@ function undo() {
  */
 function redo() {
     if (state.redoStack.length === 0) return;
-    state.undoStack.push(JSON.parse(JSON.stringify(state.canvasData)));
-    state.canvasData = state.redoStack.pop();
+    const snapshot = state.redoStack.pop();
+    // 保存当前状态到 undo
+    state.undoStack.push(state.layers.map(l => ({
+        data: JSON.parse(JSON.stringify(l.data))
+    })));
+    // 恢复
+    snapshot.forEach((s, i) => {
+        if (state.layers[i]) state.layers[i].data = s.data;
+    });
     renderCanvas();
+    renderLayerList();
 }
 
 /**
@@ -587,10 +643,16 @@ function redo() {
 function clearCanvas() {
     if (confirm('确定要清空画布吗？')) {
         saveState();
-        state.canvasData = Array(state.canvasHeight).fill(null).map(() =>
-            Array(state.canvasWidth).fill(null)
-        );
+        const activeData = getActiveData();
+        if (activeData) {
+            for (let y = 0; y < state.canvasHeight; y++) {
+                for (let x = 0; x < state.canvasWidth; x++) {
+                    activeData[y][x] = null;
+                }
+            }
+        }
         renderCanvas();
+        renderLayerList();
     }
 }
 
@@ -606,32 +668,35 @@ function autoOutline(outlineType = 'both') {
 
     saveState();
     
-    const newCanvasData = JSON.parse(JSON.stringify(state.canvasData));
+    const activeData = getActiveData();
+    if (!activeData) return;
+
+    const newData = createLayerDataSnapshot();
     const width = state.canvasWidth;
     const height = state.canvasHeight;
     
     // 遍历所有像素，检测边缘
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            const isOpaque = state.canvasData[y][x] !== null;
+            const isOpaque = activeData[y][x] !== null;
             
             if (outlineType === 'inner' || outlineType === 'both') {
                 // 内边线：在不透明像素上，如果周围有透明像素，则绘制边线
                 if (isOpaque && hasTransparentNeighbor(x, y)) {
-                    newCanvasData[y][x] = state.currentColor;
+                    newData[y][x] = state.currentColor;
                 }
             }
             
             if (outlineType === 'outer' || outlineType === 'both') {
                 // 外边线：在透明像素上，如果周围有不透明像素，则绘制边线
                 if (!isOpaque && hasOpaqueNeighbor(x, y)) {
-                    newCanvasData[y][x] = state.currentColor;
+                    newData[y][x] = state.currentColor;
                 }
             }
         }
     }
     
-    state.canvasData = newCanvasData;
+    state.layers[state.activeLayerIndex].data = newData;
     renderCanvas();
 }
 
@@ -639,6 +704,9 @@ function autoOutline(outlineType = 'both') {
  * 检查像素是否有透明邻居（8方向）
  */
 function hasTransparentNeighbor(x, y) {
+    const activeData = getActiveData();
+    if (!activeData) return false;
+
     const neighbors = [
         [-1, -1], [0, -1], [1, -1],
         [-1, 0],           [1, 0],
@@ -654,7 +722,7 @@ function hasTransparentNeighbor(x, y) {
             return true;
         }
         
-        if (state.canvasData[ny][nx] === null) {
+        if (activeData[ny][nx] === null) {
             return true;
         }
     }
@@ -666,6 +734,9 @@ function hasTransparentNeighbor(x, y) {
  * 检查像素是否有不透明邻居（8方向）
  */
 function hasOpaqueNeighbor(x, y) {
+    const activeData = getActiveData();
+    if (!activeData) return false;
+
     const neighbors = [
         [-1, -1], [0, -1], [1, -1],
         [-1, 0],           [1, 0],
@@ -681,12 +752,25 @@ function hasOpaqueNeighbor(x, y) {
             continue;
         }
         
-        if (state.canvasData[ny][nx] !== null) {
+        if (activeData[ny][nx] !== null) {
             return true;
         }
     }
     
     return false;
+}
+
+/**
+ * 从图层中获取指定坐标的颜色（从顶层到底层查找）
+ */
+function getLayerPixelColor(x, y) {
+    for (let i = state.layers.length - 1; i >= 0; i--) {
+        if (!state.layers[i].visible) continue;
+        if (state.layers[i].data[y] && state.layers[i].data[y][x] !== null) {
+            return state.layers[i].data[y][x];
+        }
+    }
+    return null;
 }
 
 /**
@@ -698,11 +782,14 @@ function downloadPNG() {
     exportCanvas.height = state.canvasHeight;
     const exportCtx = exportCanvas.getContext('2d');
 
-    for (let y = 0; y < state.canvasHeight; y++) {
-        for (let x = 0; x < state.canvasWidth; x++) {
-            if (state.canvasData[y][x]) {
-                exportCtx.fillStyle = state.canvasData[y][x];
-                exportCtx.fillRect(x, y, 1, 1);
+    for (const layer of state.layers) {
+        if (!layer.visible) continue;
+        for (let y = 0; y < state.canvasHeight; y++) {
+            for (let x = 0; x < state.canvasWidth; x++) {
+                if (layer.data[y][x]) {
+                    exportCtx.fillStyle = layer.data[y][x];
+                    exportCtx.fillRect(x, y, 1, 1);
+                }
             }
         }
     }
@@ -857,7 +944,18 @@ function createBlankCanvas(width, height) {
     state.lastY = null;
 
     setCanvasSize(width, height);
+    renderLayerList();
     showNotification(`已创建 ${width}×${height} 空白画布`);
+}
+
+/**
+ * 从undo快照恢复所有图层数据
+ */
+function restoreFromUndoSnapshot() {
+    const snapshot = state.undoStack[state.undoStack.length - 1];
+    snapshot.forEach((s, i) => {
+        if (state.layers[i]) state.layers[i].data = JSON.parse(JSON.stringify(s.data));
+    });
 }
 
 /**
@@ -952,6 +1050,17 @@ function initEventListeners() {
     }
 
     document.addEventListener('keydown', handleKeyDown);
+
+    // 图层面板按钮事件
+    document.getElementById('add-layer-btn').addEventListener('click', addLayer);
+    document.getElementById('delete-layer-btn').addEventListener('click', deleteLayer);
+    document.getElementById('duplicate-layer-btn').addEventListener('click', duplicateLayer);
+    document.getElementById('merge-down-btn').addEventListener('click', mergeDown);
+    document.getElementById('move-layer-up-btn').addEventListener('click', moveLayerUp);
+    document.getElementById('move-layer-down-btn').addEventListener('click', moveLayerDown);
+    document.getElementById('layers-panel-close').addEventListener('click', () => {
+        document.getElementById('layers-panel').classList.toggle('collapsed');
+    });
 }
 
 function zoomIn() {
@@ -1014,7 +1123,9 @@ function handleMouseDown(e) {
     if (state.currentTool === 'global-fill') {
         // 全局填充：需要点击一个像素来确定要替换的颜色
         if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
-            const targetColor = state.canvasData[y][x];
+            const activeData = getActiveData();
+            if (!activeData) return;
+            const targetColor = activeData[y][x];
             if (targetColor !== null) {
                 globalFill(targetColor, state.currentColor);
             } else {
@@ -1026,7 +1137,7 @@ function handleMouseDown(e) {
 
     if (state.currentTool === 'picker') {
         if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
-            const color = state.canvasData[y][x];
+            const color = getLayerPixelColor(x, y);
             if (color) {
                 // 尝试在色板中查找匹配的颜色
                 let found = false;
@@ -1080,7 +1191,7 @@ function handleMouseMove(e) {
     if (state.currentTool === 'picker') {
         const { x, y } = getCanvasCoords(e);
         if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
-            const color = state.canvasData[y][x];
+            const color = getLayerPixelColor(x, y);
             if (color) {
                 canvas.style.cursor = 'crosshair';
                 canvas.title = `颜色: ${color}`;
@@ -1104,15 +1215,15 @@ function handleMouseMove(e) {
     } else if (state.currentTool === 'line') {
         console.log('绘制直线:', state.startShapeX, state.startShapeY, '->', x, y);
         // 直线工具：恢复原始状态，然后绘制从起点到当前点的直线
-        state.canvasData = JSON.parse(JSON.stringify(state.undoStack[state.undoStack.length - 1]));
+        restoreFromUndoSnapshot();
         drawLine(state.startShapeX, state.startShapeY, x, y, state.currentColor);
         renderCanvas();
     } else if (state.currentTool === 'rect') {
-        state.canvasData = JSON.parse(JSON.stringify(state.undoStack[state.undoStack.length - 1]));
+        restoreFromUndoSnapshot();
         drawRect(state.startShapeX, state.startShapeY, x, y, state.currentColor);
         renderCanvas();
     } else if (state.currentTool === 'circle') {
-        state.canvasData = JSON.parse(JSON.stringify(state.undoStack[state.undoStack.length - 1]));
+        restoreFromUndoSnapshot();
         const radius = Math.max(Math.abs(x - state.startShapeX), Math.abs(y - state.startShapeY));
         drawCircle(state.startShapeX, state.startShapeY, radius, state.currentColor);
         renderCanvas();
@@ -1225,7 +1336,9 @@ function handleTouchStart(e) {
         if (state.currentTool === 'global-fill') {
             // 全局填充：需要点击一个像素来确定要替换的颜色
             if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
-                const targetColor = state.canvasData[y][x];
+                const activeData = getActiveData();
+                if (!activeData) return;
+                const targetColor = activeData[y][x];
                 if (targetColor !== null) {
                     globalFill(targetColor, state.currentColor);
                 } else {
@@ -1237,7 +1350,7 @@ function handleTouchStart(e) {
 
         if (state.currentTool === 'picker') {
             if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
-                const color = state.canvasData[y][x];
+                const color = getLayerPixelColor(x, y);
                 if (color) {
                     // 尝试在色板中查找匹配的颜色
                     let found = false;
@@ -1264,6 +1377,16 @@ function handleTouchStart(e) {
                     showNotification('该位置是透明的');
                 }
             }
+            return;
+        }
+
+        if (state.currentTool === 'rect' || state.currentTool === 'circle' || state.currentTool === 'line') {
+            state.isDrawing = true;
+            state.startShapeX = x;
+            state.startShapeY = y;
+            state.lastX = x;
+            state.lastY = y;
+            saveState();
             return;
         }
 
@@ -1328,8 +1451,15 @@ function handleTouchMove(e) {
         
         if (state.currentTool === 'line') {
             // 直线工具：恢复原始状态，然后绘制从起点到当前点的直线
-            state.canvasData = JSON.parse(JSON.stringify(state.undoStack[state.undoStack.length - 1]));
+            restoreFromUndoSnapshot();
             drawLine(state.startShapeX, state.startShapeY, x, y, state.currentColor);
+        } else if (state.currentTool === 'rect') {
+            restoreFromUndoSnapshot();
+            drawRect(state.startShapeX, state.startShapeY, x, y, state.currentColor);
+        } else if (state.currentTool === 'circle') {
+            restoreFromUndoSnapshot();
+            const radius = Math.max(Math.abs(x - state.startShapeX), Math.abs(y - state.startShapeY));
+            drawCircle(state.startShapeX, state.startShapeY, radius, state.currentColor);
         } else if (state.currentTool === 'pencil' || state.currentTool === 'eraser') {
             drawLine(state.lastX, state.lastY, x, y, state.currentTool === 'eraser' ? null : state.currentColor);
             state.lastX = x;
@@ -1341,6 +1471,8 @@ function handleTouchMove(e) {
 
 function handleTouchEnd() {
     state.isDrawing = false;
+    state.startShapeX = null;
+    state.startShapeY = null;
     // 清除移动工具的平移状态
     if (state.isPanning) {
         state.isPanning = false;
@@ -1413,12 +1545,14 @@ function updateBrushSizeDisplay() {
  * 检查画布是否有内容（非空像素）
  */
 function hasCanvasContent() {
-    if (!state.canvasData || state.canvasData.length === 0) return false;
+    if (!state.layers || state.layers.length === 0) return false;
     
-    for (let y = 0; y < state.canvasHeight; y++) {
-        for (let x = 0; x < state.canvasWidth; x++) {
-            if (state.canvasData[y][x] !== null) {
-                return true;
+    for (const layer of state.layers) {
+        for (let y = 0; y < state.canvasHeight; y++) {
+            for (let x = 0; x < state.canvasWidth; x++) {
+                if (layer.data[y][x] !== null) {
+                    return true;
+                }
             }
         }
     }
@@ -1540,6 +1674,212 @@ function centerCanvas() {
     state.panOffsetY = (viewportRect.height - canvasHeight) / 2;
     
     updateCanvasTransform();
+}
+
+/**
+ * 创建活跃图层数据的深度快照
+ */
+function createLayerDataSnapshot() {
+    const activeData = getActiveData();
+    return activeData ? JSON.parse(JSON.stringify(activeData)) : null;
+}
+
+/**
+ * 渲染图层面板列表
+ */
+function renderLayerList() {
+    const container = document.getElementById('layers-list');
+    if (!container) return;
+    container.innerHTML = '';
+
+    state.layers.forEach((layer, index) => {
+        const item = document.createElement('div');
+        item.className = 'layer-item';
+        if (index === state.activeLayerIndex) item.classList.add('active');
+
+        // 可见性切换
+        const visibilityBtn = document.createElement('button');
+        visibilityBtn.className = 'layer-visibility-btn';
+        visibilityBtn.innerHTML = layer.visible
+            ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+            : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+        visibilityBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleLayerVisibility(index);
+        });
+        item.appendChild(visibilityBtn);
+
+        // 缩略图 canvas
+        const thumbCanvas = document.createElement('canvas');
+        thumbCanvas.width = state.canvasWidth || 32;
+        thumbCanvas.height = state.canvasHeight || 32;
+        thumbCanvas.className = 'layer-thumb';
+        const thumbCtx = thumbCanvas.getContext('2d');
+        // 绘制棋盘格背景
+        thumbCtx.fillStyle = '#ccc';
+        for (let py = 0; py < (state.canvasHeight || 32); py += 4) {
+            for (let px = 0; px < (state.canvasWidth || 32); px += 4) {
+                if ((Math.floor(px / 4) + Math.floor(py / 4)) % 2 === 0) {
+                    thumbCtx.fillStyle = '#e0e0e0';
+                } else {
+                    thumbCtx.fillStyle = '#f5f5f5';
+                }
+                thumbCtx.fillRect(px, py, 4, 4);
+            }
+        }
+        // 绘制图层像素
+        for (let py = 0; py < (state.canvasHeight || 32); py++) {
+            for (let px = 0; px < (state.canvasWidth || 32); px++) {
+                if (layer.data[py] && layer.data[py][px]) {
+                    thumbCtx.fillStyle = layer.data[py][px];
+                    thumbCtx.fillRect(px, py, 1, 1);
+                }
+            }
+        }
+        item.appendChild(thumbCanvas);
+
+        // 图层名称（可双击改名）
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'layer-name';
+        nameSpan.textContent = layer.name;
+        nameSpan.title = '双击改名';
+        nameSpan.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            const newName = prompt('图层名称:', layer.name);
+            if (newName && newName.trim()) {
+                layer.name = newName.trim();
+                renderLayerList();
+            }
+        });
+        item.appendChild(nameSpan);
+
+        item.addEventListener('click', () => setActiveLayer(index));
+        container.appendChild(item);
+    });
+}
+
+/**
+ * 设置活跃图层
+ */
+function setActiveLayer(index) {
+    if (index < 0 || index >= state.layers.length) return;
+    state.activeLayerIndex = index;
+    renderLayerList();
+}
+
+/**
+ * 切换图层可见性
+ */
+function toggleLayerVisibility(index) {
+    state.layers[index].visible = !state.layers[index].visible;
+    renderCanvas();
+    renderLayerList();
+}
+
+/**
+ * 新建图层
+ */
+function addLayer() {
+    saveState();
+    const newLayer = {
+        id: state.nextLayerId++,
+        name: `图层 ${state.layers.length + 1}`,
+        visible: true,
+        data: Array(state.canvasHeight).fill(null).map(() => Array(state.canvasWidth).fill(null))
+    };
+    state.layers.splice(state.activeLayerIndex + 1, 0, newLayer);
+    state.activeLayerIndex++;
+    renderCanvas();
+    renderLayerList();
+}
+
+/**
+ * 删除图层
+ */
+function deleteLayer() {
+    if (state.layers.length <= 1) {
+        showNotification('至少保留一个图层');
+        return;
+    }
+    saveState();
+    state.layers.splice(state.activeLayerIndex, 1);
+    if (state.activeLayerIndex >= state.layers.length) {
+        state.activeLayerIndex = state.layers.length - 1;
+    }
+    renderCanvas();
+    renderLayerList();
+}
+
+/**
+ * 复制图层
+ */
+function duplicateLayer() {
+    saveState();
+    const source = state.layers[state.activeLayerIndex];
+    const newLayer = {
+        id: state.nextLayerId++,
+        name: source.name + ' 副本',
+        visible: true,
+        data: JSON.parse(JSON.stringify(source.data))
+    };
+    state.layers.splice(state.activeLayerIndex + 1, 0, newLayer);
+    state.activeLayerIndex++;
+    renderCanvas();
+    renderLayerList();
+}
+
+/**
+ * 向下合并
+ */
+function mergeDown() {
+    if (state.activeLayerIndex <= 0) {
+        showNotification('无法合并：已是最底层');
+        return;
+    }
+    saveState();
+    const upperLayer = state.layers[state.activeLayerIndex];
+    const lowerLayer = state.layers[state.activeLayerIndex - 1];
+
+    for (let y = 0; y < state.canvasHeight; y++) {
+        for (let x = 0; x < state.canvasWidth; x++) {
+            if (upperLayer.data[y][x] !== null) {
+                lowerLayer.data[y][x] = upperLayer.data[y][x];
+            }
+        }
+    }
+
+    state.layers.splice(state.activeLayerIndex, 1);
+    state.activeLayerIndex--;
+    renderCanvas();
+    renderLayerList();
+}
+
+/**
+ * 上移图层
+ */
+function moveLayerUp() {
+    if (state.activeLayerIndex >= state.layers.length - 1) return;
+    saveState();
+    const temp = state.layers[state.activeLayerIndex];
+    state.layers[state.activeLayerIndex] = state.layers[state.activeLayerIndex + 1];
+    state.layers[state.activeLayerIndex + 1] = temp;
+    state.activeLayerIndex++;
+    renderCanvas();
+    renderLayerList();
+}
+
+/**
+ * 下移图层
+ */
+function moveLayerDown() {
+    if (state.activeLayerIndex <= 0) return;
+    saveState();
+    const temp = state.layers[state.activeLayerIndex];
+    state.layers[state.activeLayerIndex] = state.layers[state.activeLayerIndex - 1];
+    state.layers[state.activeLayerIndex - 1] = temp;
+    state.activeLayerIndex--;
+    renderCanvas();
+    renderLayerList();
 }
 
 // 页面加载时添加事件监听
