@@ -174,6 +174,13 @@ body {
     overflow: hidden;
 }
 
+.canvas-main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
 /* 工具栏 */
 .toolbar {
     display: flex;
@@ -1316,52 +1323,40 @@ body {
 
 /* 桌面端图层面板 - 右侧垂直布局 */
 @media (min-width: 769px) {
-    .canvas-area {
-        display: grid;
-        grid-template-columns: 1fr 160px;
-        grid-template-rows: auto 1fr auto auto;
-        grid-template-areas:
-            "toolbar toolbar"
-            "canvas  layers"
-            "status  status"
-            "footer  footer";
-    }
-
-    .canvas-area.layers-collapsed {
-        grid-template-columns: 1fr 36px;
-    }
-
-    .toolbar {
-        grid-area: toolbar;
+    .canvas-main {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        flex: 1 1 0%;
+        min-height: 0;
+        min-width: 0;
+        align-items: stretch;
     }
 
     .canvas-container {
-        grid-area: canvas;
+        flex: 1 1 0%;
         min-width: 0;
         min-height: 0;
-    }
-
-    .status-bar {
-        grid-area: status;
-    }
-
-    footer {
-        grid-area: footer;
+        align-self: stretch;
     }
 
     .layers-panel {
-        grid-area: layers;
-        width: 160px;
+        flex: 0 0 160px;
+        min-width: 160px;
+        max-width: 160px;
+        align-self: stretch;
         height: auto;
         flex-direction: column;
         border-top: none;
         border-left: 1px solid #dee2e6;
         box-shadow: -2px 0 8px rgba(0,0,0,0.05);
-        transition: width 0.2s ease;
+        transition: flex 0.25s ease, min-width 0.25s ease, max-width 0.25s ease;
     }
 
     .layers-panel.collapsed {
-        width: 36px;
+        flex: 0 0 36px;
+        min-width: 36px;
+        max-width: 36px;
         height: auto;
     }
 
