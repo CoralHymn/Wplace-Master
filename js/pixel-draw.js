@@ -1059,7 +1059,10 @@ function initEventListeners() {
     document.getElementById('move-layer-up-btn').addEventListener('click', moveLayerUp);
     document.getElementById('move-layer-down-btn').addEventListener('click', moveLayerDown);
     document.getElementById('layers-panel-close').addEventListener('click', () => {
-        document.getElementById('layers-panel').classList.toggle('collapsed');
+        const panel = document.getElementById('layers-panel');
+        const canvasArea = document.querySelector('.canvas-area');
+        panel.classList.toggle('collapsed');
+        if (canvasArea) canvasArea.classList.toggle('layers-collapsed');
     });
 }
 
