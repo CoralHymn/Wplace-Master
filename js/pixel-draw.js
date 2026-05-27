@@ -1692,7 +1692,9 @@ function renderLayerList() {
     if (!container) return;
     container.innerHTML = '';
 
-    state.layers.forEach((layer, index) => {
+    for (let i = state.layers.length - 1; i >= 0; i--) {
+        const layer = state.layers[i];
+        const index = i;
         const item = document.createElement('div');
         item.className = 'layer-item';
         if (index === state.activeLayerIndex) item.classList.add('active');
@@ -1755,7 +1757,7 @@ function renderLayerList() {
 
         item.addEventListener('click', () => setActiveLayer(index));
         container.appendChild(item);
-    });
+    }
 }
 
 /**
