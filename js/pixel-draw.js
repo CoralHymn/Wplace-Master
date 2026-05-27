@@ -752,6 +752,115 @@ function handleImportFile(e) {
 }
 
 /**
+ * 显示创建画布对话框
+ */
+function showCreateCanvasDialog() {
+    const dialog = document.createElement('div');
+    dialog.className = 'confirm-dialog-overlay';
+    dialog.innerHTML = `
+        <div class="confirm-dialog create-canvas-dialog">
+            <div class="confirm-message">创建空白画布</div>
+            <div class="create-canvas-inputs">
+                <div class="canvas-input-group">
+                    <label for="canvas-input-width">宽度 (px)</label>
+                    <input type="number" id="canvas-input-width" min="1" max="10000" value="100" class="canvas-size-input">
+                </div>
+                <span class="canvas-input-sep">×</span>
+                <div class="canvas-input-group">
+                    <label for="canvas-input-height">高度 (px)</label>
+                    <input type="number" id="canvas-input-height" min="1" max="10000" value="100" class="canvas-size-input">
+                </div>
+            </div>
+            <div class="create-canvas-presets">
+                <span class="preset-label">预设:</span>
+                <button class="preset-btn" data-w="16" data-h="16">16×16</button>
+                <button class="preset-btn" data-w="32" data-h="32">32×32</button>
+                <button class="preset-btn" data-w="64" data-h="64">64×64</button>
+                <button class="preset-btn" data-w="100" data-h="100">100×100</button>
+                <button class="preset-btn" data-w="128" data-h="128">128×128</button>
+                <button class="preset-btn" data-w="256" data-h="256">256×256</button>
+            </div>
+            <div class="confirm-buttons">
+                <button class="confirm-btn cancel">取消</button>
+                <button class="confirm-btn confirm" style="background:#007bff;">创建</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(dialog);
+
+    const widthInput = dialog.querySelector('#canvas-input-width');
+    const heightInput = dialog.querySelector('#canvas-input-height');
+
+    // 预设按钮
+    dialog.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            widthInput.value = btn.dataset.w;
+            heightInput.value = btn.dataset.h;
+            widthInput.focus();
+            widthInput.select();
+        });
+    });
+
+    // 限制输入范围
+    [widthInput, heightInput].forEach(input => {
+        input.addEventListener('input', () => {
+            let val = parseInt(input.value);
+            if (val > 10000) input.value = 10000;
+            if (val < 1) input.value = 1;
+        });
+    });
+
+    // 回车键创建
+    dialog.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const w = Math.max(1, Math.min(10000, parseInt(widthInput.value) || 100));
+            const h = Math.max(1, Math.min(10000, parseInt(heightInput.value) || 100));
+            document.body.removeChild(dialog);
+            createBlankCanvas(w, h);
+        }
+    });
+
+    dialog.querySelector('.cancel').addEventListener('click', () => {
+        document.body.removeChild(dialog);
+    });
+
+    dialog.querySelector('.confirm').addEventListener('click', () => {
+        const w = Math.max(1, Math.min(10000, parseInt(widthInput.value) || 100));
+        const h = Math.max(1, Math.min(10000, parseInt(heightInput.value) || 100));
+        document.body.removeChild(dialog);
+        createBlankCanvas(w, h);
+    });
+
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) {
+            document.body.removeChild(dialog);
+        }
+    });
+
+    // 自动聚焦宽度输入框
+    setTimeout(() => {
+        widthInput.focus();
+        widthInput.select();
+    }, 100);
+}
+
+/**
+ * 创建空白画布
+ */
+function createBlankCanvas(width, height) {
+    state.undoStack = [];
+    state.redoStack = [];
+    state.importedImage = null;
+    state.isDrawing = false;
+    state.lastX = null;
+    state.lastY = null;
+
+    setCanvasSize(width, height);
+    showNotification(`已创建 ${width}×${height} 空白画布`);
+}
+
+/**
  * 初始化事件监听器
  */
 function initEventListeners() {
@@ -819,6 +928,8 @@ function initEventListeners() {
         document.getElementById('import-file').click();
     });
     document.getElementById('import-file').addEventListener('change', handleImportFile);
+
+    document.getElementById('new-canvas-btn').addEventListener('click', showCreateCanvasDialog);
 
     // 画布背景色按钮
     document.querySelectorAll('.bg-color-btn').forEach(btn => {
