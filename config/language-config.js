@@ -57,8 +57,9 @@ const LANGUAGE_CONFIG = {
             saturation: "饱和度",
             sharpness: "锐化",
             hue: "色相",
+            temperature: "色温",
             resetAdjustments: "重置所有调整",
-            imageProcessingDesc: "调整图片的亮度、对比度、饱和度、锐化和色相",
+            imageProcessingDesc: "调整图片的亮度、对比度、饱和度、锐化、色相和色温",
             // 实时调整开关
             realtimeToggle: "开启实时调整",
             manualGenerateBtn: "生成图片",
@@ -124,8 +125,9 @@ const LANGUAGE_CONFIG = {
             saturation: "Насыщенность",
             sharpness: "Резкость",
             hue: "Оттенок",
+            temperature: "Цветовая температура",
             resetAdjustments: "Сбросить все настройки",
-            imageProcessingDesc: "Настройте яркость, контрастность, насыщенность, резкость и оттенок изображения",
+            imageProcessingDesc: "Настройте яркость, контрастность, насыщенность, резкость, оттенок и цветовую температуру изображения",
             // 实时调整开关
             realtimeToggle: "Включить реальное время",
             manualGenerateBtn: "Сгенерировать изображение",
@@ -190,8 +192,9 @@ const LANGUAGE_CONFIG = {
             saturation: "Saturation",
             sharpness: "Sharpness",
             hue: "Hue",
+            temperature: "Color Temperature",
             resetAdjustments: "Reset All Adjustments",
-            imageProcessingDesc: "Adjust brightness, contrast, saturation, sharpness and hue of the image",
+            imageProcessingDesc: "Adjust brightness, contrast, saturation, sharpness, hue and color temperature of the image",
             // 实时调整开关
             realtimeToggle: "Enable Real-time Adjustment",
             manualGenerateBtn: "Generate Image",
@@ -207,7 +210,7 @@ const LANGUAGE_CONFIG = {
             notSelected: "Not Selected",
             // 其他UI元素
             ditherScale: "Dither Scale",
-            imageProcessingDesc: "Adjust brightness, contrast and saturation of the image",
+            imageProcessingDesc: "Adjust brightness, contrast, saturation, sharpness, hue and color temperature of the image",
             exportSelection: "Export Selection",
             editInPainter: "Edit in Painting Tool",
             pixelPaintTool: "Pixel Paint Tool",
@@ -257,8 +260,9 @@ const LANGUAGE_CONFIG = {
             saturation: "彩度",
             sharpness: "シャープネス",
             hue: "色相",
+            temperature: "色温度",
             resetAdjustments: "すべての調整をリセット",
-            imageProcessingDesc: "画像の明るさ、コントラスト、彩度、シャープネス、色相を調整します",
+            imageProcessingDesc: "画像の明るさ、コントラスト、彩度、シャープネス、色相、色温度を調整します",
             // 实时调整开关
             realtimeToggle: "リアルタイム調整を有効にする",
             manualGenerateBtn: "画像を生成",

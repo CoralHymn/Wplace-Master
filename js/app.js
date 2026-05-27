@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         saturation: 100,
         sharpness: 0,
         hue: 0,
+        temperature: 0,
         // 实时调整开关
         realtimeEnabled: true,
         // 参与人数
@@ -90,6 +91,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const saturationValue = document.getElementById('saturation-value');
     const sharpnessValue = document.getElementById('sharpness-value');
     const hueValue = document.getElementById('hue-value');
+    const temperatureSlider = document.getElementById('temperature');
+    const temperatureValue = document.getElementById('temperature-value');
     const resetImageAdjustmentsBtn = document.getElementById('reset-image-adjustments');
 
     // 颜色选择和替换相关DOM元素
@@ -304,6 +307,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 hueInput.addEventListener('input', handleHueInputChange);
             }
         }
+        if (temperatureSlider) {
+            temperatureSlider.addEventListener('input', handleTemperatureChange);
+            const temperatureInput = document.getElementById('temperature-value');
+            if (temperatureInput) {
+                temperatureInput.addEventListener('change', handleTemperatureInputChange);
+                temperatureInput.addEventListener('input', handleTemperatureInputChange);
+            }
+        }
         if (resetImageAdjustmentsBtn) resetImageAdjustmentsBtn.addEventListener('click', resetImageAdjustments);
     }
 
@@ -357,6 +368,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const hueLabel = document.getElementById('hue-label');
         if (hueLabel) hueLabel.textContent = t.hue || 'Hue';
+
+        const temperatureLabel = document.getElementById('temperature-label');
+        if (temperatureLabel) temperatureLabel.textContent = t.temperature || 'Color Temperature';
 
         const widthLabel = document.querySelector('label[for="image-width"]');
         if (widthLabel) widthLabel.textContent = t.width + ':';
@@ -850,6 +864,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * 调整色温
+     * @param {ImageData} imageData - 原始图像数据
+     * @param {number} temperature - 色温偏移 (-100 to 100)，正值偏暖（橙），负值偏冷（蓝）
+     */
+    function adjustTemperature(imageData, temperature) {
+        if (temperature === 0) return imageData;
+
+        const data = imageData.data;
+        const factor = temperature / 100;
+
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+
+            if (factor > 0) {
+                data[i] = Math.min(255, r + 30 * factor);
+                data[i + 1] = Math.min(255, g + 10 * factor);
+                data[i + 2] = Math.max(0, b - 30 * factor);
+            } else {
+                data[i] = Math.max(0, r + 30 * factor);
+                data[i + 1] = Math.max(0, g + 10 * factor);
+                data[i + 2] = Math.min(255, b - 30 * factor);
+            }
+        }
+
+        return imageData;
+    }
+
+    /**
      * 应用所有图片处理效果
      * @param {HTMLImageElement} img - 原始图片
      * @returns {ImageData} 处理后的图像数据
@@ -867,12 +911,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // 获取图像数据
         let imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
         
-        // 按顺序应用调整：亮度 -> 对比度 -> 饱和度 -> 锐化 -> 色相
+        // 按顺序应用调整：亮度 -> 对比度 -> 饱和度 -> 锐化 -> 色相 -> 色温
         imageData = adjustBrightness(imageData, state.brightness);
         imageData = adjustContrast(imageData, state.contrast);
         imageData = adjustSaturation(imageData, state.saturation);
         imageData = adjustSharpness(imageData, state.sharpness);
         imageData = adjustHue(imageData, state.hue);
+        imageData = adjustTemperature(imageData, state.temperature);
         
         return imageData;
     }
@@ -1019,6 +1064,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * 处理色温变化（滑块）
+     */
+    function handleTemperatureChange(e) {
+        state.temperature = parseInt(e.target.value);
+        const el = document.getElementById('temperature-value');
+        if (el) el.value = state.temperature;
+        smartUpdatePreview();
+    }
+
+    /**
+     * 处理色温变化（数字输入框）
+     */
+    function handleTemperatureInputChange(e) {
+        let value = parseInt(e.target.value, 10);
+        if (isNaN(value)) value = 0;
+        if (value < -100) value = -100;
+        if (value > 100) value = 100;
+
+        state.temperature = value;
+        temperatureSlider.value = value;
+        smartUpdatePreview();
+    }
+
+    /**
      * 重置所有图片调整
      */
     function resetImageAdjustments() {
@@ -1027,24 +1096,28 @@ document.addEventListener('DOMContentLoaded', () => {
         state.saturation = 100;
         state.sharpness = 0;
         state.hue = 0;
+        state.temperature = 0;
         
         brightnessSlider.value = 100;
         contrastSlider.value = 100;
         saturationSlider.value = 100;
         sharpnessSlider.value = 0;
         hueSlider.value = 0;
+        temperatureSlider.value = 0;
         
         const brightnessEl = document.getElementById('brightness-value');
         const contrastEl = document.getElementById('contrast-value');
         const saturationEl = document.getElementById('saturation-value');
         const sharpnessEl = document.getElementById('sharpness-value');
         const hueEl = document.getElementById('hue-value');
+        const temperatureEl = document.getElementById('temperature-value');
         
         if (brightnessEl) brightnessEl.value = 100;
         if (contrastEl) contrastEl.value = 100;
         if (saturationEl) saturationEl.value = 100;
         if (sharpnessEl) sharpnessEl.value = 0;
         if (hueEl) hueEl.value = 0;
+        if (temperatureEl) temperatureEl.value = 0;
         
         smartUpdatePreview();
     }
@@ -1118,9 +1191,9 @@ document.addEventListener('DOMContentLoaded', () => {
         previewCanvas.width = newWidth;
         previewCanvas.height = newHeight;
 
-        // 应用图片处理（亮度、对比度、饱和度、锐化、色相）
+        // 应用图片处理（亮度、对比度、饱和度、锐化、色相、色温）
         let sourceImageData;
-        if (state.brightness !== 100 || state.contrast !== 100 || state.saturation !== 100 || state.sharpness !== 0 || state.hue !== 0) {
+        if (state.brightness !== 100 || state.contrast !== 100 || state.saturation !== 100 || state.sharpness !== 0 || state.hue !== 0 || state.temperature !== 0) {
             // 先调整原始图片
             const adjustedImageData = applyImageAdjustments(state.inputImage);
             // 将调整后的数据绘制到canvas并缩放
