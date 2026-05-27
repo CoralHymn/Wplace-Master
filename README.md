@@ -16,12 +16,11 @@
 本项目基于三文鱼大佬的html文件进行二次开发与功能扩展。
 
 - **源码**: 像素转换器算法源码[ColorDitherer](https://github.com/PRTSSourceCode/ColorDitherer) 
-- **原网页制作者**: 【三文鱼、肉意思】【P.R.T.S Alliance】Discord群组
+- **原网页制作者**: [【三文鱼、肉意思】【P.R.T.S Alliance】Discord群组](https://github.com/salspica)
 - **修改与功能扩展**: 【coralhymn】（和平之师）
 
-感谢原作者的开源贡献，本项目在原有基础上添加了像素绘画工具、以及欠缺的移动端适配等新功能。
+感谢原作者的开源贡献，本项目在原有基础上添加了像素绘画工具、以及欠缺的移动端适配、更多图像调整等新功能。
 
-我没有原作者的github链接，原作者看到了请联系我，我在文档里加上你的github链接！！！！
 
 ---
 
@@ -201,8 +200,8 @@ Pixel-Master/
 
 ## 🤝 致谢
 
-- **原始项目**：[ColorDitherer](https://github.com/PRTSSourceCode/ColorDitherer) - 提供核心的颜色转换功能
-- **社区支持**：【P.R.T.S Alliance】Discord 群组
+- **原始项目**：[ColorDitherer](https://github.com/PRTSSourceCode/ColorDitherer) - 提供核心的算法功能
+- **社区支持**：【P.R.T.S Alliance】Discord 群组、像素互助群
 - **AI 辅助**：本项目部分功能由 AI 辅助开发完成
 
 ---
