@@ -390,6 +390,8 @@
                     name: '处理后图层',
                     visible: true,
                     isMask: false,
+                    opacity: 1,
+                    blendMode: 'normal',
                     data: newLayerData
                 }];
                 state.activeLayerIndex = 0;
@@ -434,6 +436,149 @@
         toast.style.opacity = '1';
         clearTimeout(toast._timer);
         toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 1500);
+    }
+
+    // ==================== 图层增强（不透明度 + 混合模式） ====================
+    const BLEND_MODES = [
+        { value: 'normal', label: '正常' },
+        { value: 'multiply', label: '正片叠底' },
+        { value: 'screen', label: '滤色' },
+        { value: 'overlay', label: '叠加' },
+        { value: 'darken', label: '变暗' },
+        { value: 'lighten', label: '变亮' },
+        { value: 'color-dodge', label: '减淡' },
+        { value: 'color-burn', label: '加深' },
+        { value: 'hard-light', label: '强光' },
+        { value: 'soft-light', label: '柔光' },
+        { value: 'difference', label: '差值' },
+        { value: 'exclusion', label: '排除' }
+    ];
+
+    function initLayerProperties() {
+        for (const layer of state.layers) {
+            if (layer.opacity == null) layer.opacity = 1;
+            if (!layer.blendMode) layer.blendMode = 'normal';
+        }
+    }
+
+    function patchAddLayer() {
+        const _orig = window.addLayer;
+        if (!_orig) return;
+        window.addLayer = function() {
+            _orig.apply(this, arguments);
+            for (const layer of state.layers) {
+                if (layer.opacity == null) layer.opacity = 1;
+                if (!layer.blendMode) layer.blendMode = 'normal';
+            }
+        };
+    }
+
+    function patchRenderCanvas() {
+        const _orig = renderCanvas;
+
+        renderCanvas = function() {
+            const canvas = document.getElementById('pixel-canvas');
+            if (!canvas) { _orig(); return; }
+            const ctx = canvas.getContext('2d');
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const tempCanvases = [];
+
+            for (let i = 0; i < state.layers.length; i++) {
+                const layer = state.layers[i];
+                if (!layer.visible) continue;
+
+                const maskLayer = (i > 0 && state.layers[i - 1].isMask) ? state.layers[i - 1] : null;
+
+                const tc = document.createElement('canvas');
+                tc.width = canvas.width;
+                tc.height = canvas.height;
+                const tctx = tc.getContext('2d');
+
+                for (let y = 0; y < state.canvasHeight; y++) {
+                    for (let x = 0; x < state.canvasWidth; x++) {
+                        if (layer.data[y][x]) {
+                            if (!maskLayer || maskLayer.data[y][x]) {
+                                tctx.fillStyle = layer.data[y][x];
+                                tctx.fillRect(x, y, 1, 1);
+                            }
+                        }
+                    }
+                }
+
+                tempCanvases.push({ canvas: tc, layer: layer });
+            }
+
+            for (const { canvas: tc, layer } of tempCanvases) {
+                const opacity = layer.opacity != null ? layer.opacity : 1;
+                const blendMode = layer.blendMode || 'normal';
+
+                ctx.globalAlpha = opacity;
+                ctx.globalCompositeOperation = blendMode === 'normal' ? 'source-over' : blendMode;
+                ctx.drawImage(tc, 0, 0);
+            }
+
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
+
+            if (state.isTransforming && state.transformPreviewData) {
+                ctx.globalAlpha = 0.5;
+                for (const pixel of state.transformPreviewData) {
+                    ctx.fillStyle = pixel.color;
+                    ctx.fillRect(pixel.x, pixel.y, 1, 1);
+                }
+                ctx.globalAlpha = 1.0;
+            }
+
+            if (state.showGrid && state.zoom >= 8) {
+                if (typeof drawGrid === 'function') drawGrid();
+            }
+        };
+    }
+
+    function patchRenderLayerList() {
+        const _orig = renderLayerList;
+
+        renderLayerList = function() {
+            _orig();
+            updateLayerPanelControls();
+        };
+    }
+
+    function patchSetActiveLayer() {
+        const _orig = window.setActiveLayer;
+        if (!_orig) return;
+        window.setActiveLayer = function(index) {
+            _orig(index);
+            updateLayerPanelControls();
+        };
+    }
+
+    function updateLayerPanelControls() {
+        const wrap = document.getElementById('pm-layer-controls-wrap');
+        if (!wrap) return;
+
+        const layer = state.layers[state.activeLayerIndex];
+        if (!layer) { wrap.style.display = 'none'; return; }
+
+        wrap.style.display = '';
+
+        const nameEl = document.getElementById('pm-layer-name');
+        if (nameEl) nameEl.textContent = layer.name + (layer.isMask ? ' [蒙版]' : '');
+
+        const opacitySlider = document.getElementById('pm-layer-opacity');
+        const opacityVal = document.getElementById('pm-layer-opacity-val');
+        if (opacitySlider && opacityVal) {
+            const v = layer.opacity != null ? layer.opacity : 1;
+            opacitySlider.value = v;
+            opacityVal.textContent = Math.round(v * 100) + '%';
+        }
+
+        const blendSelect = document.getElementById('pm-layer-blend-mode');
+        if (blendSelect) {
+            blendSelect.value = layer.blendMode || 'normal';
+        }
     }
 
     // ==================== 悬浮窗 UI ====================
@@ -482,6 +627,20 @@
                 <div style="font-size:11px;color:#6c757d;">颜色替换</div>
                 <div id="pm-replacements" style="display:flex;flex-direction:column;gap:3px;max-height:80px;overflow-y:auto;"></div>
                 <button id="pm-add-replacement" style="padding:4px 8px;font-size:11px;border:1px dashed #0d6efd;border-radius:4px;background:#fff;color:#0d6efd;cursor:pointer;">+ 添加替换</button>
+                <div style="border-top:1px solid #dee2e6;margin:2px 0;"></div>
+                <div style="font-size:11px;color:#6c757d;">活跃图层</div>
+                <div id="pm-layer-controls-wrap" style="display:flex;flex-direction:column;gap:6px;">
+                    <span id="pm-layer-name" style="font-size:11px;font-weight:500;color:#495057;"></span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:10px;color:#6c757d;white-space:nowrap;">不透明度</span>
+                        <input type="range" id="pm-layer-opacity" min="0" max="1" step="0.05" value="1" style="flex:1;margin:0;">
+                        <span id="pm-layer-opacity-val" style="font-size:10px;color:#6c757d;min-width:26px;text-align:right;">100%</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:10px;color:#6c757d;white-space:nowrap;">混合模式</span>
+                        <select id="pm-layer-blend-mode" style="flex:1;padding:3px 6px;font-size:11px;border:1px solid #dee2e6;border-radius:4px;background:#fff;"></select>
+                    </div>
+                </div>
                 <div style="font-size:11px;color:#6c757d;">预览</div>
                 <div id="pm-preview-wrap" style="border:1px solid #dee2e6;border-radius:4px;overflow:hidden;background:#fff url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22><rect width=%2210%22 height=%2210%22 fill=%22%23ccc%22/><rect x=%2210%22 y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23ccc%22/></svg>') repeat;display:flex;align-items:center;justify-content:center;min-height:80px;">
                     <canvas id="pm-preview-canvas" style="max-width:100%;max-height:200px;image-rendering:pixelated;"></canvas>
@@ -498,6 +657,18 @@
         bindEvents();
         updatePaletteGrid();
         updateAlgorithmSelect();
+        initBlendModeSelect();
+    }
+
+    function initBlendModeSelect() {
+        const select = document.getElementById('pm-layer-blend-mode');
+        if (!select) return;
+        for (const mode of BLEND_MODES) {
+            const opt = document.createElement('option');
+            opt.value = mode.value;
+            opt.textContent = mode.label;
+            select.appendChild(opt);
+        }
     }
 
     function bindEvents() {
@@ -531,6 +702,19 @@
         document.getElementById('pm-replace-btn').addEventListener('click', (e) => { e.stopPropagation(); replaceCanvas(); });
         document.getElementById('pm-export-btn').addEventListener('click', (e) => { e.stopPropagation(); exportPNG(); });
         document.getElementById('pm-add-replacement').addEventListener('click', (e) => { e.stopPropagation(); addReplacement(); });
+        document.getElementById('pm-layer-opacity').addEventListener('input', (e) => {
+            const layer = state.layers[state.activeLayerIndex];
+            if (!layer) return;
+            layer.opacity = parseFloat(e.target.value);
+            document.getElementById('pm-layer-opacity-val').textContent = Math.round(layer.opacity * 100) + '%';
+            renderCanvas();
+        });
+        document.getElementById('pm-layer-blend-mode').addEventListener('change', (e) => {
+            const layer = state.layers[state.activeLayerIndex];
+            if (!layer) return;
+            layer.blendMode = e.target.value;
+            renderCanvas();
+        });
     }
 
     function togglePanel() {
@@ -739,6 +923,12 @@
                 initPalette();
                 createPanel();
                 pmState.active = true;
+                initLayerProperties();
+                patchAddLayer();
+                patchRenderCanvas();
+                patchRenderLayerList();
+                patchSetActiveLayer();
+                updateLayerPanelControls();
                 console.log('[PixelMaster] 已就绪，悬浮窗位于页面右侧');
             } else {
                 setTimeout(tryInit, 200);
