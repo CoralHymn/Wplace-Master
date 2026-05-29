@@ -676,8 +676,8 @@
         document.getElementById('pm-header').addEventListener('mousedown', startDrag);
         document.addEventListener('mousemove', onDrag);
         document.addEventListener('mouseup', stopDrag);
-        document.getElementById('pm-header').addEventListener('touchstart', (e) => { startDrag(e.touches[0]); });
-        document.addEventListener('touchmove', (e) => { if (pmState.isDragging) { onDrag(e.touches[0]); e.preventDefault(); } }, { passive: false });
+        document.getElementById('pm-header').addEventListener('touchstart', (e) => { startDrag(e); }, { passive: false });
+        document.addEventListener('touchmove', (e) => { if (pmState.isDragging) { onDrag(e); e.preventDefault(); } }, { passive: false });
         document.addEventListener('touchend', stopDrag);
         document.getElementById('pm-select-all').addEventListener('click', selectAllColors);
         document.getElementById('pm-select-none').addEventListener('click', selectNoColors);
@@ -738,8 +738,9 @@
         if (!panel) return;
         const rect = panel.getBoundingClientRect();
         pmState.isDragging = true;
-        pmState.dragStartX = e.clientX;
-        pmState.dragStartY = e.clientY;
+        const point = e.touches ? e.touches[0] : e;
+        pmState.dragStartX = point.clientX;
+        pmState.dragStartY = point.clientY;
         pmState.panelLeft = rect.left;
         pmState.panelTop = rect.top;
         panel.style.right = 'auto';
@@ -753,8 +754,9 @@
         if (!pmState.isDragging) return;
         const panel = document.getElementById('pm-panel');
         if (!panel) return;
-        const dx = e.clientX - pmState.dragStartX;
-        const dy = e.clientY - pmState.dragStartY;
+        const point = e.touches ? e.touches[0] : e;
+        const dx = point.clientX - pmState.dragStartX;
+        const dy = point.clientY - pmState.dragStartY;
         panel.style.left = (pmState.panelLeft + dx) + 'px';
         panel.style.top = (pmState.panelTop + dy) + 'px';
     }
