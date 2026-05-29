@@ -139,8 +139,7 @@ function loadImageToCanvas(img) {
             const a = imageData.data[i + 3];
 
             if (a > 128) {
-                const color = findClosestColor(r, g, b);
-                data[y][x] = color;
+                data[y][x] = 'rgb(' + r + ', ' + g + ', ' + b + ')';
             } else {
                 data[y][x] = null;
             }
@@ -809,6 +808,35 @@ function getLayerPixelColor(x, y) {
  * 导出PNG
  */
 function downloadPNG() {
+    // 检查是否有非 WP 色板颜色
+    if (typeof COLOR_INFO !== 'undefined') {
+        let nonPaletteCount = 0;
+        const maxCheck = 10;
+        for (let i = 0; i < state.layers.length && nonPaletteCount < maxCheck; i++) {
+            const layer = state.layers[i];
+            if (!layer.visible) continue;
+            for (let y = 0; y < state.canvasHeight && nonPaletteCount < maxCheck; y++) {
+                for (let x = 0; x < state.canvasWidth && nonPaletteCount < maxCheck; x++) {
+                    if (layer.data[y][x] && !COLOR_INFO[layer.data[y][x]]) {
+                        nonPaletteCount++;
+                    }
+                }
+            }
+        }
+
+        if (nonPaletteCount > 0) {
+            showConfirmDialog(
+                '模板似乎不太规范（检测到不在 WP 色板中的颜色），确定要现在导出吗？',
+                () => doExportPNG()
+            );
+            return;
+        }
+    }
+
+    doExportPNG();
+}
+
+function doExportPNG() {
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = state.canvasWidth;
     exportCanvas.height = state.canvasHeight;
@@ -2090,8 +2118,7 @@ function importImageToLayer(img) {
             const a = imageData.data[i + 3];
 
             if (a > 128) {
-                const color = findClosestColor(r, g, b);
-                activeData[dy][dx] = color;
+                activeData[dy][dx] = 'rgb(' + r + ', ' + g + ', ' + b + ')';
                 importedCount++;
             }
         }
