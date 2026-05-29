@@ -1430,3 +1430,44 @@ body {
         height: 28px;
     }
 }
+
+/* 图层蒙版按钮 */
+.layer-mask-btn {
+    width: 18px;
+    height: 18px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: #f8f9fa;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+    color: #adb5bd;
+}
+
+.layer-mask-btn:hover {
+    border-color: #0d6efd;
+    background: #e7f1ff;
+    color: #0d6efd;
+}
+
+.layer-mask-btn.has-mask {
+    border-color: #0d6efd;
+    background: #0d6efd;
+    color: #fff;
+}
+
+.layer-mask-btn.has-mask:hover {
+    background: #0b5ed7;
+    border-color: #0b5ed7;
+}
+
+/* 位移工具按钮高亮 */
+.tool-btn[data-tool="transform"].active {
+    background: #0d6efd;
+    color: #fff;
+    border-color: #0d6efd;
+}
