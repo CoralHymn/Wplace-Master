@@ -239,7 +239,7 @@
     }
 
     // ==================== 状态 ====================
-    const state = {
+    const pmState = {
         active: false,
         collapsed: true,
         algorithm: 'Floyd Steinberg',
@@ -266,10 +266,10 @@
                 const color = parseColorString(rgbStr);
                 if (color) {
                     allColors.push(color);
-                    state.selectedColors.add(rgbStr);
+                    pmState.selectedColors.add(rgbStr);
                 }
             }
-            state.fullPalette = allColors;
+            pmState.fullPalette = allColors;
         }
     }
 
@@ -277,7 +277,7 @@
         const palette = [];
         if (typeof COLOR_INFO !== 'undefined') {
             for (const rgbStr of Object.keys(COLOR_INFO)) {
-                if (state.selectedColors.has(rgbStr)) {
+                if (pmState.selectedColors.has(rgbStr)) {
                     const color = parseColorString(rgbStr);
                     if (color) palette.push(color);
                 }
@@ -293,7 +293,7 @@
         const set = new Set();
         if (typeof COLOR_INFO !== 'undefined') {
             for (const rgbStr of Object.keys(COLOR_INFO)) {
-                if (state.selectedColors.has(rgbStr)) {
+                if (pmState.selectedColors.has(rgbStr)) {
                     const color = parseColorString(rgbStr);
                     if (color) set.add(JSON.stringify(color));
                 }
@@ -318,28 +318,28 @@
             return null;
         }
 
-        imageData = applyColorTemperature(imageData, state.temperature);
+        imageData = applyColorTemperature(imageData, pmState.temperature);
 
         const palette = getActivePalette();
-        const algo = ALGORITHMS[state.algorithm];
-        const fullPalette = state.fullPalette;
+        const algo = ALGORITHMS[pmState.algorithm];
+        const fullPalette = pmState.fullPalette;
         const selectedColorSet = getSelectedColorSet();
 
         if (algo.type === 'error') {
-            imageData = applyErrorDither(imageData, palette, state.strength / 100, algo.kernel, state.isLocked, fullPalette, selectedColorSet);
+            imageData = applyErrorDither(imageData, palette, pmState.strength / 100, algo.kernel, pmState.isLocked, fullPalette, selectedColorSet);
         } else if (algo.type === 'ordered') {
-            imageData = applyOrderedDither(imageData, palette, state.strength / 100, algo.matrix, state.isLocked, fullPalette, selectedColorSet);
+            imageData = applyOrderedDither(imageData, palette, pmState.strength / 100, algo.matrix, pmState.isLocked, fullPalette, selectedColorSet);
         }
 
-        if (state.forceOpaque) {
+        if (pmState.forceOpaque) {
             imageData = applyForceOpaque(imageData, palette);
         }
 
-        if (state.colorReplacements.size > 0) {
-            imageData = applyColorReplacements(imageData, state.colorReplacements);
+        if (pmState.colorReplacements.size > 0) {
+            imageData = applyColorReplacements(imageData, pmState.colorReplacements);
         }
 
-        state.processedImageData = imageData;
+        pmState.processedImageData = imageData;
         return imageData;
     }
 
@@ -357,13 +357,12 @@
     }
 
     function replaceCanvas() {
-        const imageData = state.processedImageData || processImage();
+        const imageData = pmState.processedImageData || processImage();
         if (!imageData) return;
 
         const canvas = document.getElementById('pixel-canvas');
         if (!canvas) return;
 
-        // 清空所有图层并设置第一层为处理结果
         const w = canvas.width;
         const h = canvas.height;
         const newLayerData = Array(h).fill(null).map(() => Array(w).fill(null));
@@ -381,23 +380,20 @@
             }
         }
 
-        // 尝试通过页面暴露的 state 变量操作图层
         try {
-            const winState = window.state || (window.pixelDrawState);
-            if (winState && winState.layers) {
-                // 保存状态
+            if (typeof state !== 'undefined' && state && state.layers) {
                 if (typeof window.saveState === 'function') {
                     window.saveState();
                 }
-                winState.layers = [{
+                state.layers = [{
                     id: 1,
                     name: '处理后图层',
                     visible: true,
                     isMask: false,
                     data: newLayerData
                 }];
-                winState.activeLayerIndex = 0;
-                winState.nextLayerId = 2;
+                state.activeLayerIndex = 0;
+                state.nextLayerId = 2;
                 if (typeof window.renderCanvas === 'function') window.renderCanvas();
                 if (typeof window.renderLayerList === 'function') window.renderLayerList();
                 showToast('已替换画布内容');
@@ -410,7 +406,7 @@
     }
 
     function exportPNG() {
-        const imageData = state.processedImageData || processImage();
+        const imageData = pmState.processedImageData || processImage();
         if (!imageData) return;
 
         const canvas = document.createElement('canvas');
@@ -510,26 +506,26 @@
         document.addEventListener('mousemove', onDrag);
         document.addEventListener('mouseup', stopDrag);
         document.getElementById('pm-header').addEventListener('touchstart', (e) => { startDrag(e.touches[0]); });
-        document.addEventListener('touchmove', (e) => { if (state.isDragging) { onDrag(e.touches[0]); e.preventDefault(); } }, { passive: false });
+        document.addEventListener('touchmove', (e) => { if (pmState.isDragging) { onDrag(e.touches[0]); e.preventDefault(); } }, { passive: false });
         document.addEventListener('touchend', stopDrag);
         document.getElementById('pm-select-all').addEventListener('click', selectAllColors);
         document.getElementById('pm-select-none').addEventListener('click', selectNoColors);
         document.getElementById('pm-algorithm').addEventListener('change', (e) => {
-            state.algorithm = e.target.value;
+            pmState.algorithm = e.target.value;
         });
         document.getElementById('pm-strength').addEventListener('input', (e) => {
-            state.strength = parseInt(e.target.value);
-            document.getElementById('pm-strength-val').textContent = state.strength;
+            pmState.strength = parseInt(e.target.value);
+            document.getElementById('pm-strength-val').textContent = pmState.strength;
         });
         document.getElementById('pm-temperature').addEventListener('input', (e) => {
-            state.temperature = parseInt(e.target.value);
-            document.getElementById('pm-temp-val').textContent = state.temperature;
+            pmState.temperature = parseInt(e.target.value);
+            document.getElementById('pm-temp-val').textContent = pmState.temperature;
         });
         document.getElementById('pm-force-opaque').addEventListener('change', (e) => {
-            state.forceOpaque = e.target.checked;
+            pmState.forceOpaque = e.target.checked;
         });
         document.getElementById('pm-lock-palette').addEventListener('change', (e) => {
-            state.isLocked = e.target.checked;
+            pmState.isLocked = e.target.checked;
         });
         document.getElementById('pm-preview-btn').addEventListener('click', (e) => { e.stopPropagation(); updatePreview(); });
         document.getElementById('pm-replace-btn').addEventListener('click', (e) => { e.stopPropagation(); replaceCanvas(); });
@@ -541,8 +537,8 @@
         const body = document.getElementById('pm-body');
         const toggle = document.getElementById('pm-toggle');
         if (!body || !toggle) return;
-        state.collapsed = !state.collapsed;
-        if (state.collapsed) {
+        pmState.collapsed = !pmState.collapsed;
+        if (pmState.collapsed) {
             body.style.display = 'none';
             toggle.textContent = '+';
         } else {
@@ -557,31 +553,31 @@
         const panel = document.getElementById('pm-panel');
         if (!panel) return;
         const rect = panel.getBoundingClientRect();
-        state.isDragging = true;
-        state.dragStartX = e.clientX;
-        state.dragStartY = e.clientY;
-        state.panelLeft = rect.left;
-        state.panelTop = rect.top;
+        pmState.isDragging = true;
+        pmState.dragStartX = e.clientX;
+        pmState.dragStartY = e.clientY;
+        pmState.panelLeft = rect.left;
+        pmState.panelTop = rect.top;
         panel.style.right = 'auto';
-        panel.style.left = state.panelLeft + 'px';
-        panel.style.top = state.panelTop + 'px';
+        panel.style.left = pmState.panelLeft + 'px';
+        panel.style.top = pmState.panelTop + 'px';
         panel.style.cursor = 'grabbing';
         panel.style.transition = 'none';
     }
 
     function onDrag(e) {
-        if (!state.isDragging) return;
+        if (!pmState.isDragging) return;
         const panel = document.getElementById('pm-panel');
         if (!panel) return;
-        const dx = e.clientX - state.dragStartX;
-        const dy = e.clientY - state.dragStartY;
-        panel.style.left = (state.panelLeft + dx) + 'px';
-        panel.style.top = (state.panelTop + dy) + 'px';
+        const dx = e.clientX - pmState.dragStartX;
+        const dy = e.clientY - pmState.dragStartY;
+        panel.style.left = (pmState.panelLeft + dx) + 'px';
+        panel.style.top = (pmState.panelTop + dy) + 'px';
     }
 
     function stopDrag() {
-        if (!state.isDragging) return;
-        state.isDragging = false;
+        if (!pmState.isDragging) return;
+        pmState.isDragging = false;
         const panel = document.getElementById('pm-panel');
         if (panel) {
             panel.style.cursor = '';
@@ -607,7 +603,7 @@
             swatch.title = info.name;
             swatch.dataset.color = rgbStr;
 
-            if (state.selectedColors.has(rgbStr)) {
+            if (pmState.selectedColors.has(rgbStr)) {
                 swatch.style.borderColor = '#0d6efd';
                 swatch.style.boxShadow = '0 0 0 1px #fff, 0 0 0 3px #0d6efd';
             } else {
@@ -631,16 +627,16 @@
             const opt = document.createElement('option');
             opt.value = name;
             opt.textContent = name;
-            opt.selected = (name === state.algorithm);
+            opt.selected = (name === pmState.algorithm);
             select.appendChild(opt);
         }
     }
 
     function toggleColor(rgbStr) {
-        if (state.selectedColors.has(rgbStr)) {
-            state.selectedColors.delete(rgbStr);
+        if (pmState.selectedColors.has(rgbStr)) {
+            pmState.selectedColors.delete(rgbStr);
         } else {
-            state.selectedColors.add(rgbStr);
+            pmState.selectedColors.add(rgbStr);
         }
         updatePaletteGrid();
     }
@@ -648,14 +644,14 @@
     function selectAllColors() {
         if (typeof COLOR_INFO !== 'undefined') {
             for (const rgbStr of Object.keys(COLOR_INFO)) {
-                state.selectedColors.add(rgbStr);
+                pmState.selectedColors.add(rgbStr);
             }
         }
         updatePaletteGrid();
     }
 
     function selectNoColors() {
-        state.selectedColors.clear();
+        pmState.selectedColors.clear();
         updatePaletteGrid();
     }
 
@@ -711,7 +707,7 @@
     }
 
     function updateReplacements() {
-        state.colorReplacements.clear();
+        pmState.colorReplacements.clear();
         const container = document.getElementById('pm-replacements');
         if (!container) return;
 
@@ -725,7 +721,7 @@
                     const sourceColor = parseColorString(sourceRgb);
                     const targetColor = parseColorString(targetRgb);
                     if (sourceColor && targetColor) {
-                        state.colorReplacements.set(JSON.stringify(sourceColor), targetColor);
+                        pmState.colorReplacements.set(JSON.stringify(sourceColor), targetColor);
                     }
                 }
             }
@@ -742,7 +738,7 @@
             if (canvas && typeof COLOR_INFO !== 'undefined') {
                 initPalette();
                 createPanel();
-                state.active = true;
+                pmState.active = true;
                 console.log('[PixelMaster] 已就绪，悬浮窗位于页面右侧');
             } else {
                 setTimeout(tryInit, 200);
