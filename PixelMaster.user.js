@@ -239,7 +239,7 @@
     }
 
     // ==================== 状态 ====================
-    const state = {
+    const pmState = {
         active: false,
         collapsed: true,
         algorithm: 'Floyd Steinberg',
@@ -266,10 +266,10 @@
                 const color = parseColorString(rgbStr);
                 if (color) {
                     allColors.push(color);
-                    state.selectedColors.add(rgbStr);
+                    pmState.selectedColors.add(rgbStr);
                 }
             }
-            state.fullPalette = allColors;
+            pmState.fullPalette = allColors;
         }
     }
 
@@ -277,7 +277,7 @@
         const palette = [];
         if (typeof COLOR_INFO !== 'undefined') {
             for (const rgbStr of Object.keys(COLOR_INFO)) {
-                if (state.selectedColors.has(rgbStr)) {
+                if (pmState.selectedColors.has(rgbStr)) {
                     const color = parseColorString(rgbStr);
                     if (color) palette.push(color);
                 }
@@ -293,7 +293,7 @@
         const set = new Set();
         if (typeof COLOR_INFO !== 'undefined') {
             for (const rgbStr of Object.keys(COLOR_INFO)) {
-                if (state.selectedColors.has(rgbStr)) {
+                if (pmState.selectedColors.has(rgbStr)) {
                     const color = parseColorString(rgbStr);
                     if (color) set.add(JSON.stringify(color));
                 }
@@ -318,28 +318,28 @@
             return null;
         }
 
-        imageData = applyColorTemperature(imageData, state.temperature);
+        imageData = applyColorTemperature(imageData, pmState.temperature);
 
         const palette = getActivePalette();
-        const algo = ALGORITHMS[state.algorithm];
-        const fullPalette = state.fullPalette;
+        const algo = ALGORITHMS[pmState.algorithm];
+        const fullPalette = pmState.fullPalette;
         const selectedColorSet = getSelectedColorSet();
 
         if (algo.type === 'error') {
-            imageData = applyErrorDither(imageData, palette, state.strength / 100, algo.kernel, state.isLocked, fullPalette, selectedColorSet);
+            imageData = applyErrorDither(imageData, palette, pmState.strength / 100, algo.kernel, pmState.isLocked, fullPalette, selectedColorSet);
         } else if (algo.type === 'ordered') {
-            imageData = applyOrderedDither(imageData, palette, state.strength / 100, algo.matrix, state.isLocked, fullPalette, selectedColorSet);
+            imageData = applyOrderedDither(imageData, palette, pmState.strength / 100, algo.matrix, pmState.isLocked, fullPalette, selectedColorSet);
         }
 
-        if (state.forceOpaque) {
+        if (pmState.forceOpaque) {
             imageData = applyForceOpaque(imageData, palette);
         }
 
-        if (state.colorReplacements.size > 0) {
-            imageData = applyColorReplacements(imageData, state.colorReplacements);
+        if (pmState.colorReplacements.size > 0) {
+            imageData = applyColorReplacements(imageData, pmState.colorReplacements);
         }
 
-        state.processedImageData = imageData;
+        pmState.processedImageData = imageData;
         return imageData;
     }
 
@@ -357,13 +357,12 @@
     }
 
     function replaceCanvas() {
-        const imageData = state.processedImageData || processImage();
+        const imageData = pmState.processedImageData || processImage();
         if (!imageData) return;
 
         const canvas = document.getElementById('pixel-canvas');
         if (!canvas) return;
 
-        // 清空所有图层并设置第一层为处理结果
         const w = canvas.width;
         const h = canvas.height;
         const newLayerData = Array(h).fill(null).map(() => Array(w).fill(null));
@@ -381,23 +380,22 @@
             }
         }
 
-        // 尝试通过页面暴露的 state 变量操作图层
         try {
-            const winState = window.state || (window.pixelDrawState);
-            if (winState && winState.layers) {
-                // 保存状态
+            if (typeof state !== 'undefined' && state && state.layers) {
                 if (typeof window.saveState === 'function') {
                     window.saveState();
                 }
-                winState.layers = [{
+                state.layers = [{
                     id: 1,
                     name: '处理后图层',
                     visible: true,
                     isMask: false,
+                    opacity: 1,
+                    blendMode: 'normal',
                     data: newLayerData
                 }];
-                winState.activeLayerIndex = 0;
-                winState.nextLayerId = 2;
+                state.activeLayerIndex = 0;
+                state.nextLayerId = 2;
                 if (typeof window.renderCanvas === 'function') window.renderCanvas();
                 if (typeof window.renderLayerList === 'function') window.renderLayerList();
                 showToast('已替换画布内容');
@@ -410,7 +408,7 @@
     }
 
     function exportPNG() {
-        const imageData = state.processedImageData || processImage();
+        const imageData = pmState.processedImageData || processImage();
         if (!imageData) return;
 
         const canvas = document.createElement('canvas');
@@ -438,6 +436,149 @@
         toast.style.opacity = '1';
         clearTimeout(toast._timer);
         toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 1500);
+    }
+
+    // ==================== 图层增强（不透明度 + 混合模式） ====================
+    const BLEND_MODES = [
+        { value: 'normal', label: '正常' },
+        { value: 'multiply', label: '正片叠底' },
+        { value: 'screen', label: '滤色' },
+        { value: 'overlay', label: '叠加' },
+        { value: 'darken', label: '变暗' },
+        { value: 'lighten', label: '变亮' },
+        { value: 'color-dodge', label: '减淡' },
+        { value: 'color-burn', label: '加深' },
+        { value: 'hard-light', label: '强光' },
+        { value: 'soft-light', label: '柔光' },
+        { value: 'difference', label: '差值' },
+        { value: 'exclusion', label: '排除' }
+    ];
+
+    function initLayerProperties() {
+        for (const layer of state.layers) {
+            if (layer.opacity == null) layer.opacity = 1;
+            if (!layer.blendMode) layer.blendMode = 'normal';
+        }
+    }
+
+    function patchAddLayer() {
+        const _orig = window.addLayer;
+        if (!_orig) return;
+        window.addLayer = function() {
+            _orig.apply(this, arguments);
+            for (const layer of state.layers) {
+                if (layer.opacity == null) layer.opacity = 1;
+                if (!layer.blendMode) layer.blendMode = 'normal';
+            }
+        };
+    }
+
+    function patchRenderCanvas() {
+        const _orig = renderCanvas;
+
+        renderCanvas = function() {
+            const canvas = document.getElementById('pixel-canvas');
+            if (!canvas) { _orig(); return; }
+            const ctx = canvas.getContext('2d');
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const tempCanvases = [];
+
+            for (let i = 0; i < state.layers.length; i++) {
+                const layer = state.layers[i];
+                if (!layer.visible) continue;
+
+                const maskLayer = (i > 0 && state.layers[i - 1].isMask) ? state.layers[i - 1] : null;
+
+                const tc = document.createElement('canvas');
+                tc.width = canvas.width;
+                tc.height = canvas.height;
+                const tctx = tc.getContext('2d');
+
+                for (let y = 0; y < state.canvasHeight; y++) {
+                    for (let x = 0; x < state.canvasWidth; x++) {
+                        if (layer.data[y][x]) {
+                            if (!maskLayer || maskLayer.data[y][x]) {
+                                tctx.fillStyle = layer.data[y][x];
+                                tctx.fillRect(x, y, 1, 1);
+                            }
+                        }
+                    }
+                }
+
+                tempCanvases.push({ canvas: tc, layer: layer });
+            }
+
+            for (const { canvas: tc, layer } of tempCanvases) {
+                const opacity = layer.opacity != null ? layer.opacity : 1;
+                const blendMode = layer.blendMode || 'normal';
+
+                ctx.globalAlpha = opacity;
+                ctx.globalCompositeOperation = blendMode === 'normal' ? 'source-over' : blendMode;
+                ctx.drawImage(tc, 0, 0);
+            }
+
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
+
+            if (state.isTransforming && state.transformPreviewData) {
+                ctx.globalAlpha = 0.5;
+                for (const pixel of state.transformPreviewData) {
+                    ctx.fillStyle = pixel.color;
+                    ctx.fillRect(pixel.x, pixel.y, 1, 1);
+                }
+                ctx.globalAlpha = 1.0;
+            }
+
+            if (state.showGrid && state.zoom >= 8) {
+                if (typeof drawGrid === 'function') drawGrid();
+            }
+        };
+    }
+
+    function patchRenderLayerList() {
+        const _orig = renderLayerList;
+
+        renderLayerList = function() {
+            _orig();
+            updateLayerPanelControls();
+        };
+    }
+
+    function patchSetActiveLayer() {
+        const _orig = window.setActiveLayer;
+        if (!_orig) return;
+        window.setActiveLayer = function(index) {
+            _orig(index);
+            updateLayerPanelControls();
+        };
+    }
+
+    function updateLayerPanelControls() {
+        const wrap = document.getElementById('pm-layer-controls-wrap');
+        if (!wrap) return;
+
+        const layer = state.layers[state.activeLayerIndex];
+        if (!layer) { wrap.style.display = 'none'; return; }
+
+        wrap.style.display = '';
+
+        const nameEl = document.getElementById('pm-layer-name');
+        if (nameEl) nameEl.textContent = layer.name + (layer.isMask ? ' [蒙版]' : '');
+
+        const opacitySlider = document.getElementById('pm-layer-opacity');
+        const opacityVal = document.getElementById('pm-layer-opacity-val');
+        if (opacitySlider && opacityVal) {
+            const v = layer.opacity != null ? layer.opacity : 1;
+            opacitySlider.value = v;
+            opacityVal.textContent = Math.round(v * 100) + '%';
+        }
+
+        const blendSelect = document.getElementById('pm-layer-blend-mode');
+        if (blendSelect) {
+            blendSelect.value = layer.blendMode || 'normal';
+        }
     }
 
     // ==================== 悬浮窗 UI ====================
@@ -486,6 +627,20 @@
                 <div style="font-size:11px;color:#6c757d;">颜色替换</div>
                 <div id="pm-replacements" style="display:flex;flex-direction:column;gap:3px;max-height:80px;overflow-y:auto;"></div>
                 <button id="pm-add-replacement" style="padding:4px 8px;font-size:11px;border:1px dashed #0d6efd;border-radius:4px;background:#fff;color:#0d6efd;cursor:pointer;">+ 添加替换</button>
+                <div style="border-top:1px solid #dee2e6;margin:2px 0;"></div>
+                <div style="font-size:11px;color:#6c757d;">活跃图层</div>
+                <div id="pm-layer-controls-wrap" style="display:flex;flex-direction:column;gap:6px;">
+                    <span id="pm-layer-name" style="font-size:11px;font-weight:500;color:#495057;"></span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:10px;color:#6c757d;white-space:nowrap;">不透明度</span>
+                        <input type="range" id="pm-layer-opacity" min="0" max="1" step="0.05" value="1" style="flex:1;margin:0;">
+                        <span id="pm-layer-opacity-val" style="font-size:10px;color:#6c757d;min-width:26px;text-align:right;">100%</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:10px;color:#6c757d;white-space:nowrap;">混合模式</span>
+                        <select id="pm-layer-blend-mode" style="flex:1;padding:3px 6px;font-size:11px;border:1px solid #dee2e6;border-radius:4px;background:#fff;"></select>
+                    </div>
+                </div>
                 <div style="font-size:11px;color:#6c757d;">预览</div>
                 <div id="pm-preview-wrap" style="border:1px solid #dee2e6;border-radius:4px;overflow:hidden;background:#fff url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22><rect width=%2210%22 height=%2210%22 fill=%22%23ccc%22/><rect x=%2210%22 y=%2210%22 width=%2210%22 height=%2210%22 fill=%22%23ccc%22/></svg>') repeat;display:flex;align-items:center;justify-content:center;min-height:80px;">
                     <canvas id="pm-preview-canvas" style="max-width:100%;max-height:200px;image-rendering:pixelated;"></canvas>
@@ -502,6 +657,18 @@
         bindEvents();
         updatePaletteGrid();
         updateAlgorithmSelect();
+        initBlendModeSelect();
+    }
+
+    function initBlendModeSelect() {
+        const select = document.getElementById('pm-layer-blend-mode');
+        if (!select) return;
+        for (const mode of BLEND_MODES) {
+            const opt = document.createElement('option');
+            opt.value = mode.value;
+            opt.textContent = mode.label;
+            select.appendChild(opt);
+        }
     }
 
     function bindEvents() {
@@ -510,39 +677,52 @@
         document.addEventListener('mousemove', onDrag);
         document.addEventListener('mouseup', stopDrag);
         document.getElementById('pm-header').addEventListener('touchstart', (e) => { startDrag(e.touches[0]); });
-        document.addEventListener('touchmove', (e) => { if (state.isDragging) { onDrag(e.touches[0]); e.preventDefault(); } }, { passive: false });
+        document.addEventListener('touchmove', (e) => { if (pmState.isDragging) { onDrag(e.touches[0]); e.preventDefault(); } }, { passive: false });
         document.addEventListener('touchend', stopDrag);
         document.getElementById('pm-select-all').addEventListener('click', selectAllColors);
         document.getElementById('pm-select-none').addEventListener('click', selectNoColors);
         document.getElementById('pm-algorithm').addEventListener('change', (e) => {
-            state.algorithm = e.target.value;
+            pmState.algorithm = e.target.value;
         });
         document.getElementById('pm-strength').addEventListener('input', (e) => {
-            state.strength = parseInt(e.target.value);
-            document.getElementById('pm-strength-val').textContent = state.strength;
+            pmState.strength = parseInt(e.target.value);
+            document.getElementById('pm-strength-val').textContent = pmState.strength;
         });
         document.getElementById('pm-temperature').addEventListener('input', (e) => {
-            state.temperature = parseInt(e.target.value);
-            document.getElementById('pm-temp-val').textContent = state.temperature;
+            pmState.temperature = parseInt(e.target.value);
+            document.getElementById('pm-temp-val').textContent = pmState.temperature;
         });
         document.getElementById('pm-force-opaque').addEventListener('change', (e) => {
-            state.forceOpaque = e.target.checked;
+            pmState.forceOpaque = e.target.checked;
         });
         document.getElementById('pm-lock-palette').addEventListener('change', (e) => {
-            state.isLocked = e.target.checked;
+            pmState.isLocked = e.target.checked;
         });
         document.getElementById('pm-preview-btn').addEventListener('click', (e) => { e.stopPropagation(); updatePreview(); });
         document.getElementById('pm-replace-btn').addEventListener('click', (e) => { e.stopPropagation(); replaceCanvas(); });
         document.getElementById('pm-export-btn').addEventListener('click', (e) => { e.stopPropagation(); exportPNG(); });
         document.getElementById('pm-add-replacement').addEventListener('click', (e) => { e.stopPropagation(); addReplacement(); });
+        document.getElementById('pm-layer-opacity').addEventListener('input', (e) => {
+            const layer = state.layers[state.activeLayerIndex];
+            if (!layer) return;
+            layer.opacity = parseFloat(e.target.value);
+            document.getElementById('pm-layer-opacity-val').textContent = Math.round(layer.opacity * 100) + '%';
+            renderCanvas();
+        });
+        document.getElementById('pm-layer-blend-mode').addEventListener('change', (e) => {
+            const layer = state.layers[state.activeLayerIndex];
+            if (!layer) return;
+            layer.blendMode = e.target.value;
+            renderCanvas();
+        });
     }
 
     function togglePanel() {
         const body = document.getElementById('pm-body');
         const toggle = document.getElementById('pm-toggle');
         if (!body || !toggle) return;
-        state.collapsed = !state.collapsed;
-        if (state.collapsed) {
+        pmState.collapsed = !pmState.collapsed;
+        if (pmState.collapsed) {
             body.style.display = 'none';
             toggle.textContent = '+';
         } else {
@@ -557,31 +737,31 @@
         const panel = document.getElementById('pm-panel');
         if (!panel) return;
         const rect = panel.getBoundingClientRect();
-        state.isDragging = true;
-        state.dragStartX = e.clientX;
-        state.dragStartY = e.clientY;
-        state.panelLeft = rect.left;
-        state.panelTop = rect.top;
+        pmState.isDragging = true;
+        pmState.dragStartX = e.clientX;
+        pmState.dragStartY = e.clientY;
+        pmState.panelLeft = rect.left;
+        pmState.panelTop = rect.top;
         panel.style.right = 'auto';
-        panel.style.left = state.panelLeft + 'px';
-        panel.style.top = state.panelTop + 'px';
+        panel.style.left = pmState.panelLeft + 'px';
+        panel.style.top = pmState.panelTop + 'px';
         panel.style.cursor = 'grabbing';
         panel.style.transition = 'none';
     }
 
     function onDrag(e) {
-        if (!state.isDragging) return;
+        if (!pmState.isDragging) return;
         const panel = document.getElementById('pm-panel');
         if (!panel) return;
-        const dx = e.clientX - state.dragStartX;
-        const dy = e.clientY - state.dragStartY;
-        panel.style.left = (state.panelLeft + dx) + 'px';
-        panel.style.top = (state.panelTop + dy) + 'px';
+        const dx = e.clientX - pmState.dragStartX;
+        const dy = e.clientY - pmState.dragStartY;
+        panel.style.left = (pmState.panelLeft + dx) + 'px';
+        panel.style.top = (pmState.panelTop + dy) + 'px';
     }
 
     function stopDrag() {
-        if (!state.isDragging) return;
-        state.isDragging = false;
+        if (!pmState.isDragging) return;
+        pmState.isDragging = false;
         const panel = document.getElementById('pm-panel');
         if (panel) {
             panel.style.cursor = '';
@@ -607,7 +787,7 @@
             swatch.title = info.name;
             swatch.dataset.color = rgbStr;
 
-            if (state.selectedColors.has(rgbStr)) {
+            if (pmState.selectedColors.has(rgbStr)) {
                 swatch.style.borderColor = '#0d6efd';
                 swatch.style.boxShadow = '0 0 0 1px #fff, 0 0 0 3px #0d6efd';
             } else {
@@ -631,16 +811,16 @@
             const opt = document.createElement('option');
             opt.value = name;
             opt.textContent = name;
-            opt.selected = (name === state.algorithm);
+            opt.selected = (name === pmState.algorithm);
             select.appendChild(opt);
         }
     }
 
     function toggleColor(rgbStr) {
-        if (state.selectedColors.has(rgbStr)) {
-            state.selectedColors.delete(rgbStr);
+        if (pmState.selectedColors.has(rgbStr)) {
+            pmState.selectedColors.delete(rgbStr);
         } else {
-            state.selectedColors.add(rgbStr);
+            pmState.selectedColors.add(rgbStr);
         }
         updatePaletteGrid();
     }
@@ -648,14 +828,14 @@
     function selectAllColors() {
         if (typeof COLOR_INFO !== 'undefined') {
             for (const rgbStr of Object.keys(COLOR_INFO)) {
-                state.selectedColors.add(rgbStr);
+                pmState.selectedColors.add(rgbStr);
             }
         }
         updatePaletteGrid();
     }
 
     function selectNoColors() {
-        state.selectedColors.clear();
+        pmState.selectedColors.clear();
         updatePaletteGrid();
     }
 
@@ -711,7 +891,7 @@
     }
 
     function updateReplacements() {
-        state.colorReplacements.clear();
+        pmState.colorReplacements.clear();
         const container = document.getElementById('pm-replacements');
         if (!container) return;
 
@@ -725,7 +905,7 @@
                     const sourceColor = parseColorString(sourceRgb);
                     const targetColor = parseColorString(targetRgb);
                     if (sourceColor && targetColor) {
-                        state.colorReplacements.set(JSON.stringify(sourceColor), targetColor);
+                        pmState.colorReplacements.set(JSON.stringify(sourceColor), targetColor);
                     }
                 }
             }
@@ -733,23 +913,67 @@
     }
 
     // ==================== 入口 ====================
+    var _pmInitialized = false;
+
+    function doFullInit() {
+        initPalette();
+        createPanel();
+        pmState.active = true;
+        initLayerProperties();
+        patchAddLayer();
+        patchRenderCanvas();
+        patchRenderLayerList();
+        patchSetActiveLayer();
+        updateLayerPanelControls();
+        console.log('[PixelMaster] 已就绪，悬浮窗位于页面右侧');
+    }
+
     function init() {
         if (document.getElementById('pm-panel')) return;
 
-        // 等待 COLOR_INFO 和画布就绪
         const tryInit = () => {
             const canvas = document.getElementById('pixel-canvas');
             if (canvas && typeof COLOR_INFO !== 'undefined') {
-                initPalette();
-                createPanel();
-                state.active = true;
-                console.log('[PixelMaster] 已就绪，悬浮窗位于页面右侧');
+                if (window.__PM_BUILTIN__) {
+                    window.PixelMaster = {
+                        enabled: false,
+                        enable: function() {
+                            if (this.enabled) return;
+                            if (!_pmInitialized) {
+                                doFullInit();
+                                _pmInitialized = true;
+                            } else {
+                                var panel = document.getElementById('pm-panel');
+                                if (panel) panel.style.display = '';
+                                pmState.active = true;
+                            }
+                            this.enabled = true;
+                            var btn = document.getElementById('pm-toggle-btn');
+                            if (btn) btn.classList.add('active');
+                        },
+                        disable: function() {
+                            if (!this.enabled) return;
+                            var panel = document.getElementById('pm-panel');
+                            if (panel) panel.style.display = 'none';
+                            pmState.active = false;
+                            this.enabled = false;
+                            var btn = document.getElementById('pm-toggle-btn');
+                            if (btn) btn.classList.remove('active');
+                        },
+                        toggle: function() {
+                            if (this.enabled) this.disable();
+                            else this.enable();
+                        }
+                    };
+                } else {
+                    doFullInit();
+                    _pmInitialized = true;
+                }
             } else {
                 setTimeout(tryInit, 200);
             }
         };
 
-        // 等待页面加载
         if (document.readyState === 'complete') {
             tryInit();
         } else {
