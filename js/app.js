@@ -1220,14 +1220,14 @@ document.addEventListener('DOMContentLoaded', () => {
             processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked);
         }
 
-        // 应用颜色替换
-        if (state.colorReplacements.size > 0) {
-            processedImageData = applyColorReplacements(processedImageData);
-        }
-
         // 应用强制去除半透明像素
         if (state.forceOpaqueEnabled) {
             processedImageData = applyForceOpaque(processedImageData, state.activePalette);
+        }
+
+        // 应用颜色替换
+        if (state.colorReplacements.size > 0) {
+            processedImageData = applyColorReplacements(processedImageData);
         }
 
         state.processedImageData = processedImageData;
