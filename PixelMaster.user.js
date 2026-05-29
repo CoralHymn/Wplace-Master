@@ -913,29 +913,67 @@
     }
 
     // ==================== 入口 ====================
+    var _pmInitialized = false;
+
+    function doFullInit() {
+        initPalette();
+        createPanel();
+        pmState.active = true;
+        initLayerProperties();
+        patchAddLayer();
+        patchRenderCanvas();
+        patchRenderLayerList();
+        patchSetActiveLayer();
+        updateLayerPanelControls();
+        console.log('[PixelMaster] 已就绪，悬浮窗位于页面右侧');
+    }
+
     function init() {
         if (document.getElementById('pm-panel')) return;
 
-        // 等待 COLOR_INFO 和画布就绪
         const tryInit = () => {
             const canvas = document.getElementById('pixel-canvas');
             if (canvas && typeof COLOR_INFO !== 'undefined') {
-                initPalette();
-                createPanel();
-                pmState.active = true;
-                initLayerProperties();
-                patchAddLayer();
-                patchRenderCanvas();
-                patchRenderLayerList();
-                patchSetActiveLayer();
-                updateLayerPanelControls();
-                console.log('[PixelMaster] 已就绪，悬浮窗位于页面右侧');
+                if (window.__PM_BUILTIN__) {
+                    window.PixelMaster = {
+                        enabled: false,
+                        enable: function() {
+                            if (this.enabled) return;
+                            if (!_pmInitialized) {
+                                doFullInit();
+                                _pmInitialized = true;
+                            } else {
+                                var panel = document.getElementById('pm-panel');
+                                if (panel) panel.style.display = '';
+                                pmState.active = true;
+                            }
+                            this.enabled = true;
+                            var btn = document.getElementById('pm-toggle-btn');
+                            if (btn) btn.classList.add('active');
+                        },
+                        disable: function() {
+                            if (!this.enabled) return;
+                            var panel = document.getElementById('pm-panel');
+                            if (panel) panel.style.display = 'none';
+                            pmState.active = false;
+                            this.enabled = false;
+                            var btn = document.getElementById('pm-toggle-btn');
+                            if (btn) btn.classList.remove('active');
+                        },
+                        toggle: function() {
+                            if (this.enabled) this.disable();
+                            else this.enable();
+                        }
+                    };
+                } else {
+                    doFullInit();
+                    _pmInitialized = true;
+                }
             } else {
                 setTimeout(tryInit, 200);
             }
         };
 
-        // 等待页面加载
         if (document.readyState === 'complete') {
             tryInit();
         } else {
