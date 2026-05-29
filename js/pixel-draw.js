@@ -34,6 +34,12 @@ const state = {
     pinchStartPanY: 0,
     importedImage: null,
     canvasBgColor: '#f8f4f0',
+    isTransforming: false,
+    transformStartX: 0,
+    transformStartY: 0,
+    transformOffsetX: 0,
+    transformOffsetY: 0,
+    transformPreviewData: null,
     // 用于优化性能
     needsRender: false,
     rafId: null
@@ -83,6 +89,7 @@ function setCanvasSize(width, height) {
         id: 1,
         name: '图层 1',
         visible: true,
+        isMask: false,
         data: Array(height).fill(null).map(() => Array(width).fill(null))
     }];
     state.activeLayerIndex = 0;
@@ -333,16 +340,33 @@ function scheduleUpdate() {
 function renderCanvas() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    for (const layer of state.layers) {
+    for (let i = 0; i < state.layers.length; i++) {
+        const layer = state.layers[i];
         if (!layer.visible) continue;
+
+        // 检查下方图层是否为蒙版（裁剪当前图层）
+        const maskLayer = (i > 0 && state.layers[i - 1].isMask) ? state.layers[i - 1] : null;
+
         for (let y = 0; y < state.canvasHeight; y++) {
             for (let x = 0; x < state.canvasWidth; x++) {
                 if (layer.data[y][x]) {
-                    ctx.fillStyle = layer.data[y][x];
-                    ctx.fillRect(x, y, 1, 1);
+                    if (!maskLayer || maskLayer.data[y][x]) {
+                        ctx.fillStyle = layer.data[y][x];
+                        ctx.fillRect(x, y, 1, 1);
+                    }
                 }
             }
         }
+    }
+
+    // 位移预览
+    if (state.isTransforming && state.transformPreviewData) {
+        ctx.globalAlpha = 0.5;
+        for (const pixel of state.transformPreviewData) {
+            ctx.fillStyle = pixel.color;
+            ctx.fillRect(pixel.x, pixel.y, 1, 1);
+        }
+        ctx.globalAlpha = 1.0;
     }
 
     if (state.showGrid && state.zoom >= 8) {
@@ -386,7 +410,6 @@ function drawPixel(x, y) {
             const py = y + dy;
             
             if (px >= 0 && px < state.canvasWidth && py >= 0 && py < state.canvasHeight) {
-                // 如果当前颜色是透明或橡皮擦工具，清除像素
                 if (state.currentTool === 'eraser' || state.currentColor === 'transparent') {
                     activeData[py][px] = null;
                 } else if (state.currentColor) {
@@ -594,7 +617,8 @@ function showNotification(message) {
  */
 function saveState() {
     const snapshot = state.layers.map(l => ({
-        data: JSON.parse(JSON.stringify(l.data))
+        data: JSON.parse(JSON.stringify(l.data)),
+        isMask: l.isMask
     }));
     state.undoStack.push(snapshot);
     if (state.undoStack.length > 50) state.undoStack.shift();
@@ -609,11 +633,15 @@ function undo() {
     const snapshot = state.undoStack.pop();
     // 保存当前状态到 redo
     state.redoStack.push(state.layers.map(l => ({
-        data: JSON.parse(JSON.stringify(l.data))
+        data: JSON.parse(JSON.stringify(l.data)),
+        isMask: l.isMask
     })));
     // 恢复
     snapshot.forEach((s, i) => {
-        if (state.layers[i]) state.layers[i].data = s.data;
+        if (state.layers[i]) {
+            state.layers[i].data = s.data;
+            state.layers[i].isMask = s.isMask;
+        }
     });
     renderCanvas();
     renderLayerList();
@@ -627,11 +655,15 @@ function redo() {
     const snapshot = state.redoStack.pop();
     // 保存当前状态到 undo
     state.undoStack.push(state.layers.map(l => ({
-        data: JSON.parse(JSON.stringify(l.data))
+        data: JSON.parse(JSON.stringify(l.data)),
+        isMask: l.isMask
     })));
     // 恢复
     snapshot.forEach((s, i) => {
-        if (state.layers[i]) state.layers[i].data = s.data;
+        if (state.layers[i]) {
+            state.layers[i].data = s.data;
+            state.layers[i].isMask = s.isMask;
+        }
     });
     renderCanvas();
     renderLayerList();
@@ -782,13 +814,19 @@ function downloadPNG() {
     exportCanvas.height = state.canvasHeight;
     const exportCtx = exportCanvas.getContext('2d');
 
-    for (const layer of state.layers) {
+    for (let i = 0; i < state.layers.length; i++) {
+        const layer = state.layers[i];
         if (!layer.visible) continue;
+
+        const maskLayer = (i > 0 && state.layers[i - 1].isMask) ? state.layers[i - 1] : null;
+
         for (let y = 0; y < state.canvasHeight; y++) {
             for (let x = 0; x < state.canvasWidth; x++) {
                 if (layer.data[y][x]) {
-                    exportCtx.fillStyle = layer.data[y][x];
-                    exportCtx.fillRect(x, y, 1, 1);
+                    if (!maskLayer || maskLayer.data[y][x]) {
+                        exportCtx.fillStyle = layer.data[y][x];
+                        exportCtx.fillRect(x, y, 1, 1);
+                    }
                 }
             }
         }
@@ -954,7 +992,10 @@ function createBlankCanvas(width, height) {
 function restoreFromUndoSnapshot() {
     const snapshot = state.undoStack[state.undoStack.length - 1];
     snapshot.forEach((s, i) => {
-        if (state.layers[i]) state.layers[i].data = JSON.parse(JSON.stringify(s.data));
+        if (state.layers[i]) {
+            state.layers[i].data = JSON.parse(JSON.stringify(s.data));
+            if (s.isMask !== undefined) state.layers[i].isMask = s.isMask;
+        }
     });
 }
 
@@ -986,13 +1027,15 @@ function initEventListeners() {
 
     document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             state.currentTool = btn.dataset.tool;
-            
+
             // 根据工具更新光标
             if (state.currentTool === 'move') {
                 canvas.style.cursor = 'grab';
+            } else if (state.currentTool === 'transform') {
+                canvas.style.cursor = 'move';
             } else {
                 canvas.style.cursor = 'crosshair';
             }
@@ -1053,6 +1096,10 @@ function initEventListeners() {
 
     // 图层面板按钮事件
     document.getElementById('add-layer-btn').addEventListener('click', addLayer);
+    document.getElementById('import-layer-btn').addEventListener('click', () => {
+        document.getElementById('layer-import-file').click();
+    });
+    document.getElementById('layer-import-file').addEventListener('change', handleLayerImport);
     document.getElementById('delete-layer-btn').addEventListener('click', deleteLayer);
     document.getElementById('duplicate-layer-btn').addEventListener('click', duplicateLayer);
     document.getElementById('merge-down-btn').addEventListener('click', mergeDown);
@@ -1112,6 +1159,17 @@ function handleMouseDown(e) {
     if (e.button !== 0) return;
     e.stopPropagation();
     const { x, y } = getCanvasCoords(e);
+
+    // 位移工具
+    if (state.currentTool === 'transform') {
+        state.isTransforming = true;
+        state.transformStartX = x;
+        state.transformStartY = y;
+        state.transformOffsetX = 0;
+        state.transformOffsetY = 0;
+        saveState();
+        return;
+    }
 
     if (state.currentTool === 'fill') {
         saveState();
@@ -1203,6 +1261,16 @@ function handleMouseMove(e) {
         return;
     }
 
+    // 位移工具：计算偏移并生成预览
+    if (state.isTransforming) {
+        const { x, y } = getCanvasCoords(e);
+        state.transformOffsetX = x - state.transformStartX;
+        state.transformOffsetY = y - state.transformStartY;
+        generateTransformPreview();
+        renderCanvas();
+        return;
+    }
+
     if (!state.isDrawing) return;
 
     const { x, y } = getCanvasCoords(e);
@@ -1233,6 +1301,18 @@ function handleMouseMove(e) {
 function handleMouseUp(e) {
     // 清除取色器的title提示
     canvas.title = '';
+
+    // 位移工具：应用偏移
+    if (state.isTransforming) {
+        applyTransform();
+        state.isTransforming = false;
+        state.transformPreviewData = null;
+        state.transformOffsetX = 0;
+        state.transformOffsetY = 0;
+        renderCanvas();
+        renderLayerList();
+        return;
+    }
     
     // 右键拖拽结束或移动工具结束
     if (state.isPanning) {
@@ -1390,6 +1470,17 @@ function handleTouchStart(e) {
             return;
         }
 
+        // 位移工具
+        if (state.currentTool === 'transform') {
+            state.isTransforming = true;
+            state.transformStartX = x;
+            state.transformStartY = y;
+            state.transformOffsetX = 0;
+            state.transformOffsetY = 0;
+            saveState();
+            return;
+        }
+
         state.isDrawing = true;
         state.lastX = x;
         state.lastY = y;
@@ -1444,6 +1535,18 @@ function handleTouchMove(e) {
         return;
     }
 
+    // 位移工具移动
+    if (e.touches.length === 1 && state.isTransforming) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const { x, y } = getCanvasCoords(touch);
+        state.transformOffsetX = x - state.transformStartX;
+        state.transformOffsetY = y - state.transformStartY;
+        generateTransformPreview();
+        renderCanvas();
+        return;
+    }
+
     if (e.touches.length === 1 && state.isDrawing) {
         e.preventDefault();
         const touch = e.touches[0];
@@ -1470,6 +1573,18 @@ function handleTouchMove(e) {
 }
 
 function handleTouchEnd() {
+    // 位移工具结束
+    if (state.isTransforming) {
+        applyTransform();
+        state.isTransforming = false;
+        state.transformPreviewData = null;
+        state.transformOffsetX = 0;
+        state.transformOffsetY = 0;
+        renderCanvas();
+        renderLayerList();
+        return;
+    }
+    
     state.isDrawing = false;
     state.startShapeX = null;
     state.startShapeY = null;
@@ -1514,6 +1629,7 @@ function handleKeyDown(e) {
         case 'l': document.querySelector('[data-tool="line"]')?.click(); break;
         case 'r': document.querySelector('[data-tool="rect"]')?.click(); break;
         case 'c': document.querySelector('[data-tool="circle"]')?.click(); break;
+        case 't': document.querySelector('[data-tool="transform"]')?.click(); break;
         case 'o': 
             e.preventDefault();
             showOutlineOptions();
@@ -1711,6 +1827,22 @@ function renderLayerList() {
         });
         item.appendChild(visibilityBtn);
 
+        // 蒙版按钮
+        const maskBtn = document.createElement('button');
+        maskBtn.className = 'layer-mask-btn';
+        maskBtn.title = layer.isMask ? '已设为蒙版（裁剪上方图层）' : '设为蒙版（将裁剪上方图层）';
+        if (layer.isMask) {
+            maskBtn.classList.add('has-mask');
+        }
+        maskBtn.innerHTML = layer.isMask
+            ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="1" y="1" width="22" height="22" rx="2"/><circle cx="12" cy="12" r="6" fill="white"/></svg>'
+            : '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="1" width="22" height="22" rx="2"/><circle cx="12" cy="12" r="6"/></svg>';
+        maskBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleLayerMask(index);
+        });
+        item.appendChild(maskBtn);
+
         // 缩略图 canvas
         const thumbCanvas = document.createElement('canvas');
         thumbCanvas.width = state.canvasWidth || 32;
@@ -1743,7 +1875,7 @@ function renderLayerList() {
         // 图层名称（可双击改名）
         const nameSpan = document.createElement('span');
         nameSpan.className = 'layer-name';
-        nameSpan.textContent = layer.name;
+        nameSpan.textContent = layer.isMask ? layer.name + ' [蒙版]' : layer.name;
         nameSpan.title = '双击改名';
         nameSpan.addEventListener('dblclick', (e) => {
             e.stopPropagation();
@@ -1787,6 +1919,7 @@ function addLayer() {
         id: state.nextLayerId++,
         name: `图层 ${state.layers.length + 1}`,
         visible: true,
+        isMask: false,
         data: Array(state.canvasHeight).fill(null).map(() => Array(state.canvasWidth).fill(null))
     };
     state.layers.splice(state.activeLayerIndex + 1, 0, newLayer);
@@ -1823,6 +1956,7 @@ function duplicateLayer() {
         id: state.nextLayerId++,
         name: source.name + ' 副本',
         visible: true,
+        isMask: false,
         data: JSON.parse(JSON.stringify(source.data))
     };
     state.layers.splice(state.activeLayerIndex + 1, 0, newLayer);
@@ -1906,3 +2040,134 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// ==================== 导入图片到图层 ====================
+
+function handleLayerImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+            saveState();
+            importImageToLayer(img);
+        };
+        img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+}
+
+function importImageToLayer(img) {
+    const activeData = getActiveData();
+    if (!activeData) return;
+
+    // 画布中央偏移
+    const offsetX = Math.floor((state.canvasWidth - img.width) / 2);
+    const offsetY = Math.floor((state.canvasHeight - img.height) / 2);
+
+    // 用原大小绘制到一个离屏 canvas，精确获取像素
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = img.width;
+    tempCanvas.height = img.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(img, 0, 0);
+    const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
+
+    let importedCount = 0;
+    for (let sy = 0; sy < img.height; sy++) {
+        for (let sx = 0; sx < img.width; sx++) {
+            const dx = offsetX + sx;
+            const dy = offsetY + sy;
+            if (dx < 0 || dx >= state.canvasWidth || dy < 0 || dy >= state.canvasHeight) continue;
+
+            const i = (sy * img.width + sx) * 4;
+            const r = imageData.data[i];
+            const g = imageData.data[i + 1];
+            const b = imageData.data[i + 2];
+            const a = imageData.data[i + 3];
+
+            if (a > 128) {
+                const color = findClosestColor(r, g, b);
+                activeData[dy][dx] = color;
+                importedCount++;
+            }
+        }
+    }
+
+    renderCanvas();
+    renderLayerList();
+    showNotification(`已导入 ${importedCount} 个像素到「${state.layers[state.activeLayerIndex].name}」`);
+}
+
+// ==================== 蒙版功能 ====================
+
+function toggleLayerMask(index) {
+    if (index < 0 || index >= state.layers.length) return;
+    const layer = state.layers[index];
+    layer.isMask = !layer.isMask;
+    renderCanvas();
+    renderLayerList();
+    if (layer.isMask) {
+        showNotification(`「${layer.name}」已设为蒙版，将裁剪上方图层`);
+    } else {
+        showNotification(`「${layer.name}」蒙版已取消`);
+    }
+}
+
+// ==================== 位移功能 ====================
+
+function generateTransformPreview() {
+    const activeData = getActiveData();
+    if (!activeData) return;
+
+    const offsetX = state.transformOffsetX;
+    const offsetY = state.transformOffsetY;
+    const preview = [];
+
+    for (let y = 0; y < state.canvasHeight; y++) {
+        for (let x = 0; x < state.canvasWidth; x++) {
+            if (activeData[y][x]) {
+                const newX = x + offsetX;
+                const newY = y + offsetY;
+                if (newX >= 0 && newX < state.canvasWidth && newY >= 0 && newY < state.canvasHeight) {
+                    preview.push({ x: newX, y: newY, color: activeData[y][x] });
+                }
+            }
+        }
+    }
+
+    state.transformPreviewData = preview;
+}
+
+function applyTransform() {
+    const activeData = getActiveData();
+    if (!activeData) return;
+
+    const offsetX = state.transformOffsetX;
+    const offsetY = state.transformOffsetY;
+
+    if (offsetX === 0 && offsetY === 0) {
+        state.undoStack.pop();
+        return;
+    }
+
+    const newData = Array(state.canvasHeight).fill(null).map(() => Array(state.canvasWidth).fill(null));
+
+    for (let y = 0; y < state.canvasHeight; y++) {
+        for (let x = 0; x < state.canvasWidth; x++) {
+            if (activeData[y][x]) {
+                const newX = x + offsetX;
+                const newY = y + offsetY;
+                if (newX >= 0 && newX < state.canvasWidth && newY >= 0 && newY < state.canvasHeight) {
+                    newData[newY][newX] = activeData[y][x];
+                }
+            }
+        }
+    }
+
+    state.layers[state.activeLayerIndex].data = newData;
+    showNotification(`已移动图层内容 (${offsetX > 0 ? '+' : ''}${offsetX}, ${offsetY > 0 ? '+' : ''}${offsetY})`);
+}
