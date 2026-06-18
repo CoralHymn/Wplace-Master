@@ -1838,11 +1838,18 @@ function handleMouseUp(e) {
 
     // 形状工具结束：将最终形状应用到图层数据
     if (state.isDrawing && (state.currentTool === 'line' || state.currentTool === 'rect' || state.currentTool === 'circle')) {
-        restoreFromUndoSnapshot();
+        // 先保存坐标，然后立即结束绘制状态（避免 renderCanvas 因 isDrawing=true 延迟到下一帧）
         const sx = state.startShapeX;
         const sy = state.startShapeY;
         const ex = state.shapePreviewEndX;
         const ey = state.shapePreviewEndY;
+        state.isDrawing = false;
+        state.startShapeX = null;
+        state.startShapeY = null;
+        state.shapePreviewEndX = null;
+        state.shapePreviewEndY = null;
+
+        restoreFromUndoSnapshot();
         if (state.currentTool === 'line') {
             drawLine(sx, sy, ex, ey, state.currentColor);
         } else if (state.currentTool === 'rect') {
@@ -1855,10 +1862,6 @@ function handleMouseUp(e) {
     }
 
     state.isDrawing = false;
-    state.startShapeX = null;
-    state.startShapeY = null;
-    state.shapePreviewEndX = null;
-    state.shapePreviewEndY = null;
 }
 
 function handleContainerMouseDown(e) {
@@ -2113,11 +2116,17 @@ function handleTouchEnd() {
     
     // 形状工具结束：将最终形状应用到图层数据
     if (state.isDrawing && (state.currentTool === 'line' || state.currentTool === 'rect' || state.currentTool === 'circle')) {
-        restoreFromUndoSnapshot();
         const sx = state.startShapeX;
         const sy = state.startShapeY;
         const ex = state.shapePreviewEndX;
         const ey = state.shapePreviewEndY;
+        state.isDrawing = false;
+        state.startShapeX = null;
+        state.startShapeY = null;
+        state.shapePreviewEndX = null;
+        state.shapePreviewEndY = null;
+
+        restoreFromUndoSnapshot();
         if (state.currentTool === 'line') {
             drawLine(sx, sy, ex, ey, state.currentColor);
         } else if (state.currentTool === 'rect') {
