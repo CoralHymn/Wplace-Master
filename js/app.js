@@ -1526,27 +1526,30 @@ self.onmessage = function(e) {
         const newWidth = Math.round(state.originalWidth * state.imageSize);
         const newHeight = Math.round(state.originalHeight * state.imageSize);
 
-        previewCanvas.width = newWidth;
-        previewCanvas.height = newHeight;
+        // 使用离屏 canvas 渲染源图，避免 Worker 处理期间原图闪现到预览区
+        const sourceCanvas = document.createElement('canvas');
+        sourceCanvas.width = newWidth;
+        sourceCanvas.height = newHeight;
+        const sourceCtx = sourceCanvas.getContext('2d');
 
         // 应用图片处理（亮度、对比度、饱和度、锐化、色相、色温）
         let sourceImageData;
         if (state.brightness !== 100 || state.contrast !== 100 || state.saturation !== 100 || state.sharpness !== 0 || state.hue !== 0 || state.temperature !== 0) {
             // 先调整原始图片
             const adjustedImageData = applyImageAdjustments(state.inputImage);
-            // 将调整后的数据绘制到canvas并缩放
+            // 将调整后的数据绘制到离屏canvas并缩放
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = state.inputImage.width;
             tempCanvas.height = state.inputImage.height;
             const tempCtx = tempCanvas.getContext('2d');
             tempCtx.putImageData(adjustedImageData, 0, 0);
 
-            previewCtx.drawImage(tempCanvas, 0, 0, newWidth, newHeight);
-            sourceImageData = previewCtx.getImageData(0, 0, newWidth, newHeight);
+            sourceCtx.drawImage(tempCanvas, 0, 0, newWidth, newHeight);
+            sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight);
         } else {
-            // 没有调整，直接绘制
-            previewCtx.drawImage(state.inputImage, 0, 0, newWidth, newHeight);
-            sourceImageData = previewCtx.getImageData(0, 0, newWidth, newHeight);
+            // 没有调整，直接绘制到离屏canvas
+            sourceCtx.drawImage(state.inputImage, 0, 0, newWidth, newHeight);
+            sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight);
         }
 
         const algo = ALGORITHMS[state.activeAlgorithm];
@@ -1557,8 +1560,8 @@ self.onmessage = function(e) {
                 try {
                     processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, algo.kernel, null);
                 } catch (e) {
-                    // Worker failed, re-read source from canvas (buffer was transferred) and fallback to sync
-                    sourceImageData = previewCtx.getImageData(0, 0, newWidth, newHeight);
+                    // Worker failed, re-read source from offscreen canvas (buffer was transferred) and fallback to sync
+                    sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight);
                     processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked);
                 }
             } else {
@@ -1569,7 +1572,7 @@ self.onmessage = function(e) {
                 try {
                     processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, null, algo.matrix);
                 } catch (e) {
-                    sourceImageData = previewCtx.getImageData(0, 0, newWidth, newHeight);
+                    sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight);
                     processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked);
                 }
             } else {
