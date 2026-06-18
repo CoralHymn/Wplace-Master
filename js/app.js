@@ -124,6 +124,341 @@ document.addEventListener('DOMContentLoaded', () => {
     let tooltipThrottleTimer = null;
     const TOOLTIP_THROTTLE_DELAY = 16; // 约60fps
 
+    // ==================== Web Worker 抖动加速 ====================
+
+    const WORKER_CODE = `
+function findClosestColor(color, palette) {
+    let minDistance = Infinity;
+    let closestColor = palette[0];
+    for (const pColor of palette) {
+        const distance = (color[0] - pColor[0])**2 + (color[1] - pColor[1])**2 + (color[2] - pColor[2])**2;
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestColor = pColor;
+        }
+    }
+    return closestColor;
+}
+
+function applyErrorDither(imageData, palette, strength, kernel, isLocked, ditherScale, fullPalette, selectedColorSet) {
+    const originalWidth = imageData.width;
+    const originalHeight = imageData.height;
+
+    const downsampledWidth = Math.max(1, Math.floor(originalWidth / ditherScale));
+    const downsampledHeight = Math.max(1, Math.floor(originalHeight / ditherScale));
+
+    const downsampledData = new Float32Array(downsampledWidth * downsampledHeight * 4);
+
+    for (let y = 0; y < downsampledHeight; y++) {
+        for (let x = 0; x < downsampledWidth; x++) {
+            let r = 0, g = 0, b = 0, a = 0, count = 0;
+
+            for (let dy = 0; dy < ditherScale; dy++) {
+                for (let dx = 0; dx < ditherScale; dx++) {
+                    const srcX = x * ditherScale + dx;
+                    const srcY = y * ditherScale + dy;
+
+                    if (srcX < originalWidth && srcY < originalHeight) {
+                        const srcIndex = (srcY * originalWidth + srcX) * 4;
+                        r += imageData.data[srcIndex];
+                        g += imageData.data[srcIndex + 1];
+                        b += imageData.data[srcIndex + 2];
+                        a += imageData.data[srcIndex + 3];
+                        count++;
+                    }
+                }
+            }
+
+            if (count > 0) {
+                const downsampledIndex = (y * downsampledWidth + x) * 4;
+                downsampledData[downsampledIndex] = r / count;
+                downsampledData[downsampledIndex + 1] = g / count;
+                downsampledData[downsampledIndex + 2] = b / count;
+                downsampledData[downsampledIndex + 3] = a / count;
+            }
+        }
+    }
+
+    for (let y = 0; y < downsampledHeight; y++) {
+        for (let x = 0; x < downsampledWidth; x++) {
+            const i = (y * downsampledWidth + x) * 4;
+            const oldColor = [downsampledData[i], downsampledData[i+1], downsampledData[i+2]];
+            const originalAlpha = downsampledData[i+3];
+
+            if (originalAlpha < 128) {
+                downsampledData[i] = 0;
+                downsampledData[i+1] = 0;
+                downsampledData[i+2] = 0;
+                downsampledData[i+3] = 0;
+                continue;
+            }
+
+            if (isLocked && fullPalette && fullPalette.length > 0) {
+                var selectedColorsArray = Array.from(selectedColorSet).map(function(colorStr) { return JSON.parse(colorStr); });
+                if (selectedColorsArray.length > 0) {
+                    var originalQuantizedColor = findClosestColor(oldColor, fullPalette);
+
+                    if (!selectedColorSet.has(JSON.stringify(originalQuantizedColor))) {
+                        downsampledData[i] = 0;
+                        downsampledData[i+1] = 0;
+                        downsampledData[i+2] = 0;
+                        downsampledData[i+3] = 0;
+                        continue;
+                    }
+                } else {
+                    downsampledData[i] = 0;
+                    downsampledData[i+1] = 0;
+                    downsampledData[i+2] = 0;
+                    downsampledData[i+3] = 0;
+                    continue;
+                }
+            }
+
+            var newColor = findClosestColor(oldColor, palette);
+            downsampledData[i] = newColor[0];
+            downsampledData[i+1] = newColor[1];
+            downsampledData[i+2] = newColor[2];
+            downsampledData[i+3] = originalAlpha;
+
+            if (strength > 0 && kernel) {
+                var error = [
+                    (oldColor[0] - newColor[0]) * strength,
+                    (oldColor[1] - newColor[1]) * strength,
+                    (oldColor[2] - newColor[2]) * strength,
+                ];
+
+                for (var ei = 0; ei < kernel.length; ei++) {
+                    var entry = kernel[ei];
+                    var pos = entry[0];
+                    var factor = entry[1];
+                    var nx = x + pos[0];
+                    var ny = y + pos[1];
+                    if (nx >= 0 && nx < downsampledWidth && ny >= 0 && ny < downsampledHeight) {
+                        var ni = (ny * downsampledWidth + nx) * 4;
+                        downsampledData[ni]   += error[0] * factor;
+                        downsampledData[ni+1] += error[1] * factor;
+                        downsampledData[ni+2] += error[2] * factor;
+                    }
+                }
+            }
+        }
+    }
+
+    var outputData = new Uint8ClampedArray(originalWidth * originalHeight * 4);
+
+    for (var y = 0; y < originalHeight; y++) {
+        for (var x = 0; x < originalWidth; x++) {
+            var downsampledX = Math.floor(x / ditherScale);
+            var downsampledY = Math.floor(y / ditherScale);
+
+            if (downsampledX < downsampledWidth && downsampledY < downsampledHeight) {
+                var downsampledIndex = (downsampledY * downsampledWidth + downsampledX) * 4;
+                var outputIndex = (y * originalWidth + x) * 4;
+
+                outputData[outputIndex] = Math.round(Math.max(0, Math.min(255, downsampledData[downsampledIndex])));
+                outputData[outputIndex + 1] = Math.round(Math.max(0, Math.min(255, downsampledData[downsampledIndex + 1])));
+                outputData[outputIndex + 2] = Math.round(Math.max(0, Math.min(255, downsampledData[downsampledIndex + 2])));
+                outputData[outputIndex + 3] = Math.round(Math.max(0, Math.min(255, downsampledData[downsampledIndex + 3])));
+            }
+        }
+    }
+
+    return new ImageData(outputData, originalWidth, originalHeight);
+}
+
+function applyOrderedDither(imageData, palette, strength, bayerMatrix, isLocked, ditherScale, fullPalette, selectedColorSet) {
+    var originalWidth = imageData.width;
+    var originalHeight = imageData.height;
+
+    var downsampledWidth = Math.max(1, Math.floor(originalWidth / ditherScale));
+    var downsampledHeight = Math.max(1, Math.floor(originalHeight / ditherScale));
+
+    var downsampledData = new Float32Array(downsampledWidth * downsampledHeight * 4);
+
+    for (var y = 0; y < downsampledHeight; y++) {
+        for (var x = 0; x < downsampledWidth; x++) {
+            var r = 0, g = 0, b = 0, a = 0, count = 0;
+
+            for (var dy = 0; dy < ditherScale; dy++) {
+                for (var dx = 0; dx < ditherScale; dx++) {
+                    var srcX = x * ditherScale + dx;
+                    var srcY = y * ditherScale + dy;
+
+                    if (srcX < originalWidth && srcY < originalHeight) {
+                        var srcIndex = (srcY * originalWidth + srcX) * 4;
+                        r += imageData.data[srcIndex];
+                        g += imageData.data[srcIndex + 1];
+                        b += imageData.data[srcIndex + 2];
+                        a += imageData.data[srcIndex + 3];
+                        count++;
+                    }
+                }
+            }
+
+            if (count > 0) {
+                var downsampledIndex = (y * downsampledWidth + x) * 4;
+                downsampledData[downsampledIndex] = r / count;
+                downsampledData[downsampledIndex + 1] = g / count;
+                downsampledData[downsampledIndex + 2] = b / count;
+                downsampledData[downsampledIndex + 3] = a / count;
+            }
+        }
+    }
+
+    var n = bayerMatrix.length;
+    var bayerFactor = 255 / (n * n);
+
+    for (var y = 0; y < downsampledHeight; y++) {
+        for (var x = 0; x < downsampledWidth; x++) {
+            var i = (y * downsampledWidth + x) * 4;
+            var oldColor = [downsampledData[i], downsampledData[i+1], downsampledData[i+2]];
+            var originalAlpha = downsampledData[i+3];
+
+            if (originalAlpha < 128) {
+                downsampledData[i] = 0;
+                downsampledData[i+1] = 0;
+                downsampledData[i+2] = 0;
+                downsampledData[i+3] = 0;
+                continue;
+            }
+
+            if (isLocked && fullPalette && fullPalette.length > 0) {
+                var selectedColorsArray = Array.from(selectedColorSet).map(function(colorStr) { return JSON.parse(colorStr); });
+                if (selectedColorsArray.length > 0) {
+                    var originalQuantizedColor = findClosestColor(oldColor, fullPalette);
+
+                    if (!selectedColorSet.has(JSON.stringify(originalQuantizedColor))) {
+                        downsampledData[i] = 0;
+                        downsampledData[i+1] = 0;
+                        downsampledData[i+2] = 0;
+                        downsampledData[i+3] = 0;
+                        continue;
+                    }
+                } else {
+                    downsampledData[i] = 0;
+                    downsampledData[i+1] = 0;
+                    downsampledData[i+2] = 0;
+                    downsampledData[i+3] = 0;
+                    continue;
+                }
+            }
+
+            var threshold = (bayerMatrix[y % n][x % n] - n*n/2) * bayerFactor * strength * 0.2;
+            var r2 = downsampledData[i] + threshold;
+            var g2 = downsampledData[i+1] + threshold;
+            var b2 = downsampledData[i+2] + threshold;
+            var closest = findClosestColor([r2, g2, b2], palette);
+            downsampledData[i] = closest[0];
+            downsampledData[i+1] = closest[1];
+            downsampledData[i+2] = closest[2];
+            downsampledData[i+3] = originalAlpha;
+        }
+    }
+
+    var outputData = new Uint8ClampedArray(originalWidth * originalHeight * 4);
+
+    for (var y = 0; y < originalHeight; y++) {
+        for (var x = 0; x < originalWidth; x++) {
+            var downsampledX = Math.floor(x / ditherScale);
+            var downsampledY = Math.floor(y / ditherScale);
+
+            if (downsampledX < downsampledWidth && downsampledY < downsampledHeight) {
+                var downsampledIndex = (downsampledY * downsampledWidth + downsampledX) * 4;
+                var outputIndex = (y * originalWidth + x) * 4;
+
+                outputData[outputIndex] = Math.round(Math.max(0, Math.min(255, downsampledData[downsampledIndex])));
+                outputData[outputIndex + 1] = Math.round(Math.max(0, Math.min(255, downsampledData[downsampledIndex + 1])));
+                outputData[outputIndex + 2] = Math.round(Math.max(0, Math.min(255, downsampledData[downsampledIndex + 2])));
+                outputData[outputIndex + 3] = Math.round(Math.max(0, Math.min(255, downsampledData[downsampledIndex + 3])));
+            }
+        }
+    }
+
+    return new ImageData(outputData, originalWidth, originalHeight);
+}
+
+self.onmessage = function(e) {
+    var msg = e.data;
+    if (msg.type === 'process') {
+        try {
+            var selectedColorSet = new Set(msg.selectedColors || []);
+            var result;
+            if (msg.algorithmType === 'error') {
+                result = applyErrorDither(
+                    msg.imageData, msg.palette, msg.ditherStrength, msg.kernel,
+                    msg.isLocked, msg.ditherScale, msg.fullPalette, selectedColorSet
+                );
+            } else if (msg.algorithmType === 'ordered') {
+                result = applyOrderedDither(
+                    msg.imageData, msg.palette, msg.ditherStrength, msg.bayerMatrix,
+                    msg.isLocked, msg.ditherScale, msg.fullPalette, selectedColorSet
+                );
+            }
+            self.postMessage({ type: 'result', imageData: result, seed: msg.seed }, [result.data.buffer]);
+        } catch (err) {
+            self.postMessage({ type: 'error', message: err.message, seed: msg.seed });
+        }
+    }
+};
+`;
+
+    let ditherWorker = null;
+    let ditherGeneration = 0;
+
+    function _initWorker() {
+        if (typeof Worker === 'undefined') return false;
+        try {
+            const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
+            const url = URL.createObjectURL(blob);
+            ditherWorker = new Worker(url);
+            URL.revokeObjectURL(url);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function _ditherInWorker(imageData, palette, ditherStrength, algo, kernel, bayerMatrix) {
+        return new Promise((resolve, reject) => {
+            const gen = ++ditherGeneration;
+            const selectedColors = [];
+            state.selectedFreeColors.forEach(colorStr => selectedColors.push(colorStr));
+            state.selectedPaidColors.forEach(colorStr => selectedColors.push(colorStr));
+
+            function onMessage(e) {
+                if (e.data.seed !== gen) return;
+                ditherWorker.removeEventListener('message', onMessage);
+                if (e.data.type === 'error') {
+                    reject(new Error(e.data.message));
+                } else {
+                    resolve(e.data.imageData);
+                }
+            }
+
+            function onError(e) {
+                ditherWorker.removeEventListener('message', onMessage);
+                reject(new Error(e.message || 'Worker error'));
+            }
+
+            ditherWorker.addEventListener('message', onMessage);
+            ditherWorker.addEventListener('error', onError);
+
+            ditherWorker.postMessage({
+                type: 'process', seed: gen,
+                imageData: imageData,
+                palette: palette,
+                ditherStrength: ditherStrength,
+                algorithmType: algo.type,
+                kernel: kernel,
+                bayerMatrix: bayerMatrix,
+                ditherScale: state.ditherScale,
+                isLocked: state.isLocked,
+                fullPalette: state.quantizedPalette,
+                selectedColors: selectedColors
+            }, [imageData.data.buffer]);
+        });
+    }
+
     // ==================== Cookie 工具函数 ====================
     
     /**
@@ -316,6 +651,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         if (resetImageAdjustmentsBtn) resetImageAdjustmentsBtn.addEventListener('click', resetImageAdjustments);
+
+        // 初始化 Web Worker（如果支持）
+        _initWorker();
     }
 
     // ==================== 多语言功能 ====================
@@ -1179,7 +1517,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return newImageData;
     }
 
-    function updatePreview() {
+    async function updatePreview() {
         if (!state.inputImage || !state.activePalette || state.activePalette.length === 0) {
             updateColorStats(null);
             return;
@@ -1202,7 +1540,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tempCanvas.height = state.inputImage.height;
             const tempCtx = tempCanvas.getContext('2d');
             tempCtx.putImageData(adjustedImageData, 0, 0);
-            
+
             previewCtx.drawImage(tempCanvas, 0, 0, newWidth, newHeight);
             sourceImageData = previewCtx.getImageData(0, 0, newWidth, newHeight);
         } else {
@@ -1215,9 +1553,28 @@ document.addEventListener('DOMContentLoaded', () => {
         let processedImageData;
 
         if (algo.type === 'error') {
-            processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked);
+            if (ditherWorker) {
+                try {
+                    processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, algo.kernel, null);
+                } catch (e) {
+                    // Worker failed, re-read source from canvas (buffer was transferred) and fallback to sync
+                    sourceImageData = previewCtx.getImageData(0, 0, newWidth, newHeight);
+                    processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked);
+                }
+            } else {
+                processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked);
+            }
         } else if (algo.type === 'ordered') {
-            processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked);
+            if (ditherWorker) {
+                try {
+                    processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, null, algo.matrix);
+                } catch (e) {
+                    sourceImageData = previewCtx.getImageData(0, 0, newWidth, newHeight);
+                    processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked);
+                }
+            } else {
+                processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked);
+            }
         }
 
         // 应用强制去除半透明像素
@@ -2465,4 +2822,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Start the app ---
     init();
+
+    // 清理 Web Worker
+    window.addEventListener('beforeunload', function() {
+        if (ditherWorker) {
+            ditherWorker.terminate();
+            ditherWorker = null;
+        }
+    });
 });
