@@ -40,9 +40,16 @@ const state = {
     transformOffsetX: 0,
     transformOffsetY: 0,
     transformPreviewData: null,
+    // 形状预览（优化后不修改图层数据，仅叠加预览）
+    shapePreviewEndX: null,
+    shapePreviewEndY: null,
     // 用于优化性能
     needsRender: false,
-    rafId: null
+    rafId: null,
+    _forceRender: false,
+    // 离屏 Canvas 图层缓存 - 避免未变图层重复渲染
+    _layerCanvasCache: [],
+    _layerCanvasDirty: []
 };
 
 // DOM元素
@@ -98,6 +105,10 @@ function setCanvasSize(width, height) {
     canvas.width = width;
     canvas.height = height;
 
+    // 重置图层缓存
+    state._layerCanvasCache = [];
+    state._layerCanvasDirty = [true];
+
     // 设置画布背景色
     canvas.style.backgroundColor = state.canvasBgColor;
 
@@ -122,57 +133,62 @@ function setCanvasSize(width, height) {
  */
 function loadImageToCanvas(img) {
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = state.canvasWidth;
-    tempCanvas.height = state.canvasHeight;
+    const w = state.canvasWidth, h = state.canvasHeight;
+    tempCanvas.width = w;
+    tempCanvas.height = h;
     const tempCtx = tempCanvas.getContext('2d');
 
-    tempCtx.drawImage(img, 0, 0, state.canvasWidth, state.canvasHeight);
-    const imageData = tempCtx.getImageData(0, 0, state.canvasWidth, state.canvasHeight);
+    tempCtx.drawImage(img, 0, 0, w, h);
+    const imageData = tempCtx.getImageData(0, 0, w, h);
     const data = getActiveData();
 
-    for (let y = 0; y < state.canvasHeight; y++) {
-        for (let x = 0; x < state.canvasWidth; x++) {
-            const i = (y * state.canvasWidth + x) * 4;
-            const r = imageData.data[i];
-            const g = imageData.data[i + 1];
-            const b = imageData.data[i + 2];
-            const a = imageData.data[i + 3];
-
-            if (a > 128) {
-                data[y][x] = 'rgb(' + r + ', ' + g + ', ' + b + ')';
+    for (let y = 0; y < h; y++) {
+        const rowBase = y * w * 4;
+        for (let x = 0; x < w; x++) {
+            const i = rowBase + x * 4;
+            if (imageData.data[i + 3] > 128) {
+                data[y][x] = _buildRGBString(imageData.data[i], imageData.data[i + 1], imageData.data[i + 2]);
             } else {
                 data[y][x] = null;
             }
         }
     }
 
+    _invalidateLayerCache(state.activeLayerIndex);
     renderCanvas();
 }
 
 /**
  * 找到最接近的颜色
  */
+// 预解析的 COLOR_INFO 调色板（避免每次 regex 解析）
+let _preParsedPalette = null;
+function _getPreParsedPalette() {
+    if (_preParsedPalette) return _preParsedPalette;
+    _preParsedPalette = [];
+    for (const [rgb, info] of Object.entries(COLOR_INFO)) {
+        const parsed = _parseColorRGBA(rgb);
+        if (parsed) {
+            _preParsedPalette.push({ r: parsed[0], g: parsed[1], b: parsed[2], rgb: rgb });
+        }
+    }
+    return _preParsedPalette;
+}
+
 function findClosestColor(r, g, b) {
     if (typeof COLOR_INFO === 'undefined') return `rgb(${r}, ${g}, ${b})`;
 
-    let minDistance = Infinity;
+    let minDistSq = Infinity;
     let closestColor = null;
+    const palette = _getPreParsedPalette();
 
-    for (const [rgb, info] of Object.entries(COLOR_INFO)) {
-        const match = rgb.match(/\d+/g);
-        if (!match) continue;
-
-        const cr = parseInt(match[0]);
-        const cg = parseInt(match[1]);
-        const cb = parseInt(match[2]);
-
-        const distance = Math.sqrt(
-            Math.pow(r - cr, 2) + Math.pow(g - cg, 2) + Math.pow(b - cb, 2)
-        );
-
-        if (distance < minDistance) {
-            minDistance = distance;
-            closestColor = rgb;
+    for (let i = 0; i < palette.length; i++) {
+        const c = palette[i];
+        const dr = r - c.r, dg = g - c.g, db = b - c.b;
+        const distSq = dr * dr + dg * dg + db * db;
+        if (distSq < minDistSq) {
+            minDistSq = distSq;
+            closestColor = c.rgb;
         }
     }
 
@@ -329,36 +345,193 @@ function scheduleUpdate() {
     state.rafId = requestAnimationFrame(() => {
         updateCanvasTransform();
         updateZoomDisplay();
+        // 如果绘画操作中有待渲染的帧，一并处理
+        if (state.needsRender) {
+            state.needsRender = false;
+            state._forceRender = true;
+            renderCanvas();
+            state._forceRender = false;
+        }
         state.rafId = null;
     });
 }
 
 /**
- * 渲染画布
+ * 将渲染调度到下一帧 - 用于绘画操作批处理
  */
-function renderCanvas() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+function scheduleRender() {
+    state.needsRender = true;
+    scheduleUpdate();
+}
 
-    for (let i = 0; i < state.layers.length; i++) {
-        const layer = state.layers[i];
-        if (!layer.visible) continue;
+// 反向 RGB 字符串构建缓存（r,g,b 数字 -> 'rgb(r, g, b)' 字符串）
+// 用于图片导入时避免大量字符串拼接开销
+const _rgbBuildCache = new Map();
+function _buildRGBString(r, g, b) {
+    const key = (r * 65536) + (g * 256) + b;
+    let cached = _rgbBuildCache.get(key);
+    if (!cached) {
+        cached = `rgb(${r}, ${g}, ${b})`;
+        _rgbBuildCache.set(key, cached);
+    }
+    return cached;
+}
 
-        // 检查下方图层是否为蒙版（裁剪当前图层）
-        const maskLayer = (i > 0 && state.layers[i - 1].isMask) ? state.layers[i - 1] : null;
+// 颜色解析缓存，用于 ImageData 渲染加速（格式: 'rgb(r,g,b)' -> [r,g,b,a]）
+const _colorParseCache = new Map();
 
-        for (let y = 0; y < state.canvasHeight; y++) {
-            for (let x = 0; x < state.canvasWidth; x++) {
-                if (layer.data[y][x]) {
-                    if (!maskLayer || maskLayer.data[y][x]) {
-                        ctx.fillStyle = layer.data[y][x];
-                        ctx.fillRect(x, y, 1, 1);
-                    }
+/**
+ * 快速解析颜色字符串为 RGBA 数组
+ * @param {string} colorStr - 格式如 'rgb(255, 0, 0)'
+ * @returns {[number,number,number,number]} [r, g, b, 255]
+ */
+function _parseColorRGBA(colorStr) {
+    let cached = _colorParseCache.get(colorStr);
+    if (cached) return cached;
+    // 格式固定: 'rgb(rrr, ggg, bbb)'
+    const len = colorStr.length;
+    let i = 4; // 跳过 'rgb('
+    let r = 0, g = 0, b = 0;
+    // 解析 R
+    while (colorStr[i] !== ',') { r = r * 10 + (colorStr.charCodeAt(i) - 48); i++; }
+    i += 2; // 跳过 ', '
+    // 解析 G
+    while (colorStr[i] !== ',') { g = g * 10 + (colorStr.charCodeAt(i) - 48); i++; }
+    i += 2; // 跳过 ', '
+    // 解析 B
+    while (colorStr[i] !== ')') { b = b * 10 + (colorStr.charCodeAt(i) - 48); i++; }
+    cached = [r, g, b, 255];
+    _colorParseCache.set(colorStr, cached);
+    return cached;
+}
+
+/**
+ * 标记图层缓存为脏（需重建）
+ */
+function _invalidateLayerCache(layerIndex) {
+    if (typeof layerIndex !== 'undefined') {
+        state._layerCanvasDirty[layerIndex] = true;
+    } else {
+        // 未指定则全部失效
+        for (let i = 0; i < state.layers.length; i++) {
+            state._layerCanvasDirty[i] = true;
+        }
+    }
+}
+
+/**
+ * 重建指定图层的离屏 Canvas 缓存
+ */
+function _rebuildLayerCanvas(layerIndex) {
+    const layer = state.layers[layerIndex];
+    const w = state.canvasWidth;
+    const h = state.canvasHeight;
+    if (w === 0 || h === 0) return;
+
+    // 创建或复用离屏 Canvas
+    let oc = state._layerCanvasCache[layerIndex];
+    if (!oc) {
+        oc = document.createElement('canvas');
+        state._layerCanvasCache[layerIndex] = oc;
+    }
+    oc.width = w;
+    oc.height = h;
+    const octx = oc.getContext('2d');
+
+    const imageData = octx.createImageData(w, h);
+    const data = imageData.data;
+    const stride = w * 4;
+    const layerData = layer.data;
+
+    if (layer.isMask) {
+        // 蒙版层：有像素处填白色（用于 destination-in 裁剪）
+        for (let y = 0; y < h; y++) {
+            const rowData = layerData[y];
+            const rowBase = y * stride;
+            for (let x = 0; x < w; x++) {
+                if (rowData[x]) {
+                    const idx = rowBase + x * 4;
+                    data[idx] = 255;
+                    data[idx + 1] = 255;
+                    data[idx + 2] = 255;
+                    data[idx + 3] = 255;
+                }
+            }
+        }
+    } else {
+        // 普通层：渲染颜色像素
+        for (let y = 0; y < h; y++) {
+            const rowData = layerData[y];
+            const rowBase = y * stride;
+            for (let x = 0; x < w; x++) {
+                const color = rowData[x];
+                if (color) {
+                    const idx = rowBase + x * 4;
+                    const [r, g, b] = _parseColorRGBA(color);
+                    data[idx] = r;
+                    data[idx + 1] = g;
+                    data[idx + 2] = b;
+                    data[idx + 3] = 255;
                 }
             }
         }
     }
 
-    // 位移预览
+    octx.putImageData(imageData, 0, 0);
+    state._layerCanvasDirty[layerIndex] = false;
+}
+
+/**
+ * 渲染画布
+ * 使用离屏 Canvas 缓存 + drawImage 合成，蒙版用 globalCompositeOperation 实现
+ */
+function renderCanvas() {
+    // 绘画或位移拖动中→自动批处理到下一帧，避免每次鼠标移动都渲染
+    if ((state.isDrawing || state.isTransforming) && !state._forceRender) {
+        scheduleRender();
+        return;
+    }
+
+    const w = state.canvasWidth;
+    const h = state.canvasHeight;
+    if (w === 0 || h === 0) return;
+
+    const layers = state.layers;
+
+    // 1. 重建脏图层的离屏 Canvas
+    for (let i = 0; i < layers.length; i++) {
+        if (state._layerCanvasDirty[i]) {
+            _rebuildLayerCanvas(i);
+        }
+    }
+
+    // 2. 清空画布并合成各图层
+    ctx.clearRect(0, 0, w, h);
+
+    for (let i = 0; i < layers.length; i++) {
+        const layer = layers[i];
+        if (!layer.visible) continue;
+
+        // 蒙版层本身不可见，仅用于裁剪上层
+        if (layer.isMask) continue;
+
+        const maskLayer = (i > 0 && layers[i - 1].isMask && layers[i - 1].visible)
+            ? layers[i - 1] : null;
+
+        if (maskLayer) {
+            // 有蒙版：先绘制图层，再用蒙版裁剪
+            ctx.save();
+            ctx.drawImage(state._layerCanvasCache[i], 0, 0);
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.drawImage(state._layerCanvasCache[i - 1], 0, 0);
+            ctx.restore();
+        } else {
+            // 无蒙版：直接绘制
+            ctx.drawImage(state._layerCanvasCache[i], 0, 0);
+        }
+    }
+
+    // 3. 位移预览（叠加在合成结果之上）
     if (state.isTransforming && state.transformPreviewData) {
         ctx.globalAlpha = 0.5;
         for (const pixel of state.transformPreviewData) {
@@ -368,6 +541,65 @@ function renderCanvas() {
         ctx.globalAlpha = 1.0;
     }
 
+    // 3.5. 形状预览（在图层合成结果之上绘制预览形状，不修改数据）
+    if (state.isDrawing && state.shapePreviewEndX !== null && state.shapePreviewEndY !== null &&
+        (state.currentTool === 'line' || state.currentTool === 'rect' || state.currentTool === 'circle')) {
+        const sx = state.startShapeX;
+        const sy = state.startShapeY;
+        const ex = state.shapePreviewEndX;
+        const ey = state.shapePreviewEndY;
+        const rgba = state.currentColor ? _parseColorRGBA(state.currentColor) : null;
+        if (rgba) {
+            ctx.fillStyle = `rgba(${rgba[0]},${rgba[1]},${rgba[2]},0.6)`;
+            if (state.currentTool === 'line') {
+                // Bresenham 直线预览
+                let x0 = sx, y0 = sy, x1 = ex, y1 = ey;
+                const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+                const stepX = x0 < x1 ? 1 : -1, stepY = y0 < y1 ? 1 : -1;
+                let err = dx - dy;
+                while (true) {
+                    if (x0 >= 0 && x0 < w && y0 >= 0 && y0 < h) ctx.fillRect(x0, y0, 1, 1);
+                    if (x0 === x1 && y0 === y1) break;
+                    const e2 = 2 * err;
+                    if (e2 > -dy) { err -= dy; x0 += stepX; }
+                    if (e2 < dx) { err += dx; y0 += stepY; }
+                }
+            } else if (state.currentTool === 'rect') {
+                const minX = Math.max(0, Math.min(sx, ex));
+                const maxX = Math.min(w - 1, Math.max(sx, ex));
+                const minY = Math.max(0, Math.min(sy, ey));
+                const maxY = Math.min(h - 1, Math.max(sy, ey));
+                for (let x = minX; x <= maxX; x++) {
+                    if (minY >= 0 && minY < h) ctx.fillRect(x, minY, 1, 1);
+                    if (maxY >= 0 && maxY < h) ctx.fillRect(x, maxY, 1, 1);
+                }
+                for (let y = minY + 1; y < maxY; y++) {
+                    if (minX >= 0 && minX < w) ctx.fillRect(minX, y, 1, 1);
+                    if (maxX >= 0 && maxX < w) ctx.fillRect(maxX, y, 1, 1);
+                }
+            } else if (state.currentTool === 'circle') {
+                const radius = Math.max(Math.abs(ex - sx), Math.abs(ey - sy));
+                const cx = sx, cy = sy;
+                let rx = radius, ry = 0;
+                let p = 1 - radius;
+                const drawCirclePixels = (px, py) => {
+                    const points = [[px, py], [-px, py], [px, -py], [-px, -py], [py, px], [-py, px], [py, -px], [-py, -px]];
+                    for (const [dx, dy] of points) {
+                        const nx = cx + dx, ny = cy + dy;
+                        if (nx >= 0 && nx < w && ny >= 0 && ny < h) ctx.fillRect(nx, ny, 1, 1);
+                    }
+                };
+                while (rx >= ry) {
+                    drawCirclePixels(rx, ry);
+                    ry++;
+                    if (p <= 0) { p = p + 2 * ry + 1; }
+                    else { rx--; p = p + 2 * ry - 2 * rx + 1; }
+                }
+            }
+        }
+    }
+
+    // 4. 网格
     if (state.showGrid && state.zoom >= 8) {
         drawGrid();
     }
@@ -417,6 +649,7 @@ function drawPixel(x, y) {
             }
         }
     }
+    _invalidateLayerCache(state.activeLayerIndex);
 }
 
 /**
@@ -461,6 +694,7 @@ function drawLine(x0, y0, x1, y1, color) {
         if (e2 > -dy) { err -= dy; x0 += sx; }
         if (e2 < dx) { err += dx; y0 += sy; }
     }
+    _invalidateLayerCache(state.activeLayerIndex);
 }
 
 /**
@@ -484,6 +718,7 @@ function drawRect(x0, y0, x1, y1, color) {
         activeData[y][minX] = color;
         activeData[y][maxX] = color;
     }
+    _invalidateLayerCache(state.activeLayerIndex);
 }
 
 /**
@@ -522,6 +757,7 @@ function drawCircle(cx, cy, radius, color) {
             err += 2 * (y - x) + 1;
         }
     }
+    _invalidateLayerCache(state.activeLayerIndex);
 }
 
 /**
@@ -553,6 +789,7 @@ function floodFill(startX, startY, fillColor) {
         activeData[y][x] = (fillColor === 'transparent') ? null : fillColor;
         stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
     }
+    _invalidateLayerCache(state.activeLayerIndex);
 }
 
 /**
@@ -580,6 +817,7 @@ function globalFill(targetColor, fillColor) {
         }
     }
     
+    _invalidateLayerCache(state.activeLayerIndex);
     renderCanvas();
     
     // 显示填充结果提示
@@ -614,13 +852,28 @@ function showNotification(message) {
 /**
  * 保存状态
  */
+/**
+ * 根据画布尺寸计算最大撤销深度
+ * 大画布每个快照占用大量内存，需动态限制
+ */
+function _getMaxUndoDepth() {
+    const totalPixels = state.canvasWidth * state.canvasHeight;
+    if (totalPixels <= 10000) return 50;        // ≤100×100
+    if (totalPixels <= 100000) return 30;        // ≤316×316
+    if (totalPixels <= 1000000) return 20;       // ≤1000×1000
+    if (totalPixels <= 4000000) return 10;       // ≤2000×2000
+    if (totalPixels <= 8300000) return 5;        // ≤4K (3840×2160)
+    return 3;                                    // 超大画布
+}
+
 function saveState() {
     const snapshot = state.layers.map(l => ({
         data: JSON.parse(JSON.stringify(l.data)),
         isMask: l.isMask
     }));
     state.undoStack.push(snapshot);
-    if (state.undoStack.length > 50) state.undoStack.shift();
+    const maxDepth = _getMaxUndoDepth();
+    while (state.undoStack.length > maxDepth) state.undoStack.shift();
     state.redoStack = [];
 }
 
@@ -642,6 +895,7 @@ function undo() {
             state.layers[i].isMask = s.isMask;
         }
     });
+    _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
 }
@@ -664,6 +918,7 @@ function redo() {
             state.layers[i].isMask = s.isMask;
         }
     });
+    _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
 }
@@ -682,6 +937,7 @@ function clearCanvas() {
                 }
             }
         }
+        _invalidateLayerCache(state.activeLayerIndex);
         renderCanvas();
         renderLayerList();
     }
@@ -728,6 +984,7 @@ function autoOutline(outlineType = 'both') {
     }
     
     state.layers[state.activeLayerIndex].data = newData;
+    _invalidateLayerCache(state.activeLayerIndex);
     renderCanvas();
 }
 
@@ -1258,8 +1515,8 @@ function handleMouseDown(e) {
         state.isDrawing = true;
         state.startShapeX = x;
         state.startShapeY = y;
-        state.lastX = x;
-        state.lastY = y;
+        state.shapePreviewEndX = x;
+        state.shapePreviewEndY = y;
         saveState();
         return;
     }
@@ -1269,6 +1526,7 @@ function handleMouseDown(e) {
     state.lastY = y;
     saveState();
     drawPixel(x, y);
+    _invalidateLayerCache(state.activeLayerIndex);
     renderCanvas();
 }
 
@@ -1309,20 +1567,14 @@ function handleMouseMove(e) {
         state.lastY = y;
         renderCanvas();
     } else if (state.currentTool === 'line') {
-        console.log('绘制直线:', state.startShapeX, state.startShapeY, '->', x, y);
-        // 直线工具：恢复原始状态，然后绘制从起点到当前点的直线
-        restoreFromUndoSnapshot();
-        drawLine(state.startShapeX, state.startShapeY, x, y, state.currentColor);
-        renderCanvas();
-    } else if (state.currentTool === 'rect') {
-        restoreFromUndoSnapshot();
-        drawRect(state.startShapeX, state.startShapeY, x, y, state.currentColor);
-        renderCanvas();
-    } else if (state.currentTool === 'circle') {
-        restoreFromUndoSnapshot();
-        const radius = Math.max(Math.abs(x - state.startShapeX), Math.abs(y - state.startShapeY));
-        drawCircle(state.startShapeX, state.startShapeY, radius, state.currentColor);
-        renderCanvas();
+        // 直线工具：只记录终点用于预览，不修改图层数据
+        state.shapePreviewEndX = x;
+        state.shapePreviewEndY = y;
+        scheduleRender();
+    } else if (state.currentTool === 'rect' || state.currentTool === 'circle') {
+        state.shapePreviewEndX = x;
+        state.shapePreviewEndY = y;
+        scheduleRender();
     }
 }
 
@@ -1354,9 +1606,30 @@ function handleMouseUp(e) {
         return;
     }
 
+    // 形状工具结束：将最终形状应用到图层数据
+    if (state.isDrawing && (state.currentTool === 'line' || state.currentTool === 'rect' || state.currentTool === 'circle')) {
+        restoreFromUndoSnapshot();
+        const sx = state.startShapeX;
+        const sy = state.startShapeY;
+        const ex = state.shapePreviewEndX;
+        const ey = state.shapePreviewEndY;
+        if (state.currentTool === 'line') {
+            drawLine(sx, sy, ex, ey, state.currentColor);
+        } else if (state.currentTool === 'rect') {
+            drawRect(sx, sy, ex, ey, state.currentColor);
+        } else if (state.currentTool === 'circle') {
+            const radius = Math.max(Math.abs(ex - sx), Math.abs(ey - sy));
+            drawCircle(sx, sy, radius, state.currentColor);
+        }
+        _invalidateLayerCache(state.activeLayerIndex);
+        renderCanvas();
+    }
+
     state.isDrawing = false;
     state.startShapeX = null;
     state.startShapeY = null;
+    state.shapePreviewEndX = null;
+    state.shapePreviewEndY = null;
 }
 
 function handleContainerMouseDown(e) {
@@ -1437,6 +1710,7 @@ function handleTouchStart(e) {
         if (state.currentTool === 'fill') {
             saveState();
             floodFill(x, y, state.currentColor);
+            _invalidateLayerCache(state.activeLayerIndex);
             renderCanvas();
             return;
         }
@@ -1492,8 +1766,8 @@ function handleTouchStart(e) {
             state.isDrawing = true;
             state.startShapeX = x;
             state.startShapeY = y;
-            state.lastX = x;
-            state.lastY = y;
+            state.shapePreviewEndX = x;
+            state.shapePreviewEndY = y;
             saveState();
             return;
         }
@@ -1580,23 +1854,17 @@ function handleTouchMove(e) {
         const touch = e.touches[0];
         const { x, y } = getCanvasCoords(touch);
         
-        if (state.currentTool === 'line') {
-            // 直线工具：恢复原始状态，然后绘制从起点到当前点的直线
-            restoreFromUndoSnapshot();
-            drawLine(state.startShapeX, state.startShapeY, x, y, state.currentColor);
-        } else if (state.currentTool === 'rect') {
-            restoreFromUndoSnapshot();
-            drawRect(state.startShapeX, state.startShapeY, x, y, state.currentColor);
-        } else if (state.currentTool === 'circle') {
-            restoreFromUndoSnapshot();
-            const radius = Math.max(Math.abs(x - state.startShapeX), Math.abs(y - state.startShapeY));
-            drawCircle(state.startShapeX, state.startShapeY, radius, state.currentColor);
+        if (state.currentTool === 'line' || state.currentTool === 'rect' || state.currentTool === 'circle') {
+            // 形状工具：只更新预览终点，不修改图层数据
+            state.shapePreviewEndX = x;
+            state.shapePreviewEndY = y;
+            scheduleRender();
         } else if (state.currentTool === 'pencil' || state.currentTool === 'eraser') {
             drawLine(state.lastX, state.lastY, x, y, state.currentTool === 'eraser' ? null : state.currentColor);
             state.lastX = x;
             state.lastY = y;
+            renderCanvas();
         }
-        renderCanvas();
     }
 }
 
@@ -1613,9 +1881,30 @@ function handleTouchEnd() {
         return;
     }
     
+    // 形状工具结束：将最终形状应用到图层数据
+    if (state.isDrawing && (state.currentTool === 'line' || state.currentTool === 'rect' || state.currentTool === 'circle')) {
+        restoreFromUndoSnapshot();
+        const sx = state.startShapeX;
+        const sy = state.startShapeY;
+        const ex = state.shapePreviewEndX;
+        const ey = state.shapePreviewEndY;
+        if (state.currentTool === 'line') {
+            drawLine(sx, sy, ex, ey, state.currentColor);
+        } else if (state.currentTool === 'rect') {
+            drawRect(sx, sy, ex, ey, state.currentColor);
+        } else if (state.currentTool === 'circle') {
+            const radius = Math.max(Math.abs(ex - sx), Math.abs(ey - sy));
+            drawCircle(sx, sy, radius, state.currentColor);
+        }
+        _invalidateLayerCache(state.activeLayerIndex);
+        renderCanvas();
+    }
+
     state.isDrawing = false;
     state.startShapeX = null;
     state.startShapeY = null;
+    state.shapePreviewEndX = null;
+    state.shapePreviewEndY = null;
     // 清除移动工具的平移状态
     if (state.isPanning) {
         state.isPanning = false;
@@ -1952,6 +2241,7 @@ function addLayer() {
     };
     state.layers.splice(state.activeLayerIndex + 1, 0, newLayer);
     state.activeLayerIndex++;
+    _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
 }
@@ -1970,6 +2260,7 @@ function deleteLayer() {
     if (state.activeLayerIndex >= state.layers.length) {
         state.activeLayerIndex = state.layers.length - 1;
     }
+    _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
 }
@@ -1989,6 +2280,7 @@ function duplicateLayer() {
     };
     state.layers.splice(state.activeLayerIndex + 1, 0, newLayer);
     state.activeLayerIndex++;
+    _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
 }
@@ -2016,6 +2308,7 @@ function mergeDown() {
 
     state.layers.splice(state.activeLayerIndex, 1);
     state.activeLayerIndex--;
+    _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
 }
@@ -2030,6 +2323,8 @@ function moveLayerUp() {
     state.layers[state.activeLayerIndex] = state.layers[state.activeLayerIndex + 1];
     state.layers[state.activeLayerIndex + 1] = temp;
     state.activeLayerIndex++;
+    // 图层位置交换后缓存索引失效，必须全部重建
+    _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
 }
@@ -2044,6 +2339,8 @@ function moveLayerDown() {
     state.layers[state.activeLayerIndex] = state.layers[state.activeLayerIndex - 1];
     state.layers[state.activeLayerIndex - 1] = temp;
     state.activeLayerIndex--;
+    // 图层位置交换后缓存索引失效，必须全部重建
+    _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
 }
@@ -2092,6 +2389,8 @@ function importImageToLayer(img) {
     const activeData = getActiveData();
     if (!activeData) return;
 
+    saveState();
+
     // 画布中央偏移
     const offsetX = Math.floor((state.canvasWidth - img.width) / 2);
     const offsetY = Math.floor((state.canvasHeight - img.height) / 2);
@@ -2106,24 +2405,21 @@ function importImageToLayer(img) {
 
     let importedCount = 0;
     for (let sy = 0; sy < img.height; sy++) {
+        const rowBase = sy * img.width * 4;
         for (let sx = 0; sx < img.width; sx++) {
             const dx = offsetX + sx;
             const dy = offsetY + sy;
             if (dx < 0 || dx >= state.canvasWidth || dy < 0 || dy >= state.canvasHeight) continue;
 
-            const i = (sy * img.width + sx) * 4;
-            const r = imageData.data[i];
-            const g = imageData.data[i + 1];
-            const b = imageData.data[i + 2];
-            const a = imageData.data[i + 3];
-
-            if (a > 128) {
-                activeData[dy][dx] = 'rgb(' + r + ', ' + g + ', ' + b + ')';
+            const i = rowBase + sx * 4;
+            if (imageData.data[i + 3] > 128) {
+                activeData[dy][dx] = _buildRGBString(imageData.data[i], imageData.data[i + 1], imageData.data[i + 2]);
                 importedCount++;
             }
         }
     }
 
+    _invalidateLayerCache(state.activeLayerIndex);
     renderCanvas();
     renderLayerList();
     showNotification(`已导入 ${importedCount} 个像素到「${state.layers[state.activeLayerIndex].name}」`);
@@ -2135,6 +2431,8 @@ function toggleLayerMask(index) {
     if (index < 0 || index >= state.layers.length) return;
     const layer = state.layers[index];
     layer.isMask = !layer.isMask;
+    // 必须先失效缓存再渲染，因为 isMask 状态影响缓存重建逻辑（蒙版层填充白色，普通层填充颜色）
+    _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
     if (layer.isMask) {
@@ -2196,5 +2494,6 @@ function applyTransform() {
     }
 
     state.layers[state.activeLayerIndex].data = newData;
+    _invalidateLayerCache(state.activeLayerIndex);
     showNotification(`已移动图层内容 (${offsetX > 0 ? '+' : ''}${offsetX}, ${offsetY > 0 ? '+' : ''}${offsetY})`);
 }
