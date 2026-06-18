@@ -370,6 +370,18 @@ body {
     transform-origin: 0 0;
 }
 
+#preview-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    pointer-events: none;
+    will-change: transform;
+    transform-origin: 0 0;
+}
+
 /* 底部状态栏 */
 .status-bar {
     display: flex;
