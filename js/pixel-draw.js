@@ -22,6 +22,13 @@ function _getPixel(data, w, x, y) {
 }
 
 function _setPixel(data, w, x, y, val) {
+    // 稀疏撤销记录：记录被覆盖前的旧值
+    if (state._undoRecording) {
+        const oldVal = data[y * w + x];
+        if (oldVal !== val) {
+            state._undoRecording.push([state.activeLayerIndex, x, y, oldVal]);
+        }
+    }
     data[y * w + x] = val;
 }
 
@@ -81,6 +88,9 @@ const state = {
     nextLayerId: 1,
     undoStack: [],
     redoStack: [],
+    _undoRecording: null,       // [{layerIndex,x,y,oldVal}] | null=不在记录
+    _undoMemoryUsed: 0,         // 所有快照占用的估算内存(字节)
+    _undoMemoryLimit: 268435456, // 256MB 默认，init 时按设备调整
     isDrawing: false,
     lastX: null,
     lastY: null,
@@ -129,6 +139,11 @@ const canvasViewport = document.getElementById('canvas-viewport');
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
+    const isMobile = window.innerWidth < 1024 || 'ontouchstart' in window;
+    // 现代移动端 8GB+ RAM，浏览器 Tab 约 1GB；桌面端 16GB+，Tab 约 2-4GB
+    // 撤销池取 Tab 预算的 ~25%：移动 256MB / 桌面 512MB
+    // 稀疏快照 ~2KB/次，这些值只有在超大操作(floodFill 等回退全量快照)堆积时才有意义
+    state._undoMemoryLimit = isMobile ? 256 * 1024 * 1024 : 512 * 1024 * 1024;
     _initColorLUT();
     initPalette();
     checkForImportedImage();
@@ -1199,22 +1214,64 @@ function showNotification(message) {
  */
 function _getMaxUndoDepth() {
     const totalPixels = state.canvasWidth * state.canvasHeight;
-    if (totalPixels <= 10000) return 50;        // ≤100×100
-    if (totalPixels <= 100000) return 30;        // ≤316×316
-    if (totalPixels <= 1000000) return 20;       // ≤1000×1000
-    if (totalPixels <= 4000000) return 10;       // ≤2000×2000
-    if (totalPixels <= 8300000) return 5;        // ≤4K (3840×2160)
-    return 3;                                    // 超大画布
+    // 稀疏快照后单次操作仅记录变化像素(~KB级)，数量限制大幅放宽
+    // 内存池 _undoMemoryLimit 会兜底实际内存占用
+    if (totalPixels <= 10000) return 200;        // ≤100×100
+    if (totalPixels <= 100000) return 100;        // ≤316×316
+    if (totalPixels <= 1000000) return 60;        // ≤1000×1000
+    if (totalPixels <= 4000000) return 40;        // ≤2000×2000
+    if (totalPixels <= 8300000) return 30;        // ≤4K (3840×2160)
+    return 20;                                    // 超大画布
+}
+
+// ==================== 稀疏差分撤销 ====================
+
+function _commitUndoRecord() {
+    const rec = state._undoRecording;
+    state._undoRecording = null;
+    if (!rec || rec.length === 0) return;
+
+    // 超大操作回退全量快照（>500K 变化像素时稀疏比全量还大）
+    if (rec.length > 500000) {
+        state.undoStack.push(state.layers.map(l => ({
+            data: new Uint32Array(l.data),
+            isMask: l.isMask
+        })));
+        _trimUndoStack();
+        return;
+    }
+
+    // 稀疏快照: 补充 newVal，存储为 [layerIdx,x,y,oldVal,newVal] 元组数组
+    const w = state.canvasWidth;
+    const changes = [];
+    for (let i = 0; i < rec.length; i++) {
+        const entry = rec[i];
+        const layer = state.layers[entry[0]];
+        if (!layer) continue;
+        const newVal = layer.data[entry[2] * w + entry[1]];  // y*w+x
+        changes.push([entry[0], entry[1], entry[2], entry[3], newVal]);
+    }
+    state.undoStack.push({ sparse: true, changes });
+    _trimUndoStack();
+}
+
+function _trimUndoStack() {
+    // 双重限制：内存池 + 数量
+    while (state.undoStack.length > 1 && state._undoMemoryUsed > state._undoMemoryLimit) {
+        const removed = state.undoStack.shift();
+        state._undoMemoryUsed -= removed.sparse
+            ? removed.changes.length * 20   // 20 bytes/entry 平均
+            : state.canvasWidth * state.canvasHeight * 4;
+    }
+    const maxDepth = _getMaxUndoDepth();
+    while (state.undoStack.length > maxDepth) {
+        state.undoStack.shift();
+    }
 }
 
 function saveState() {
-    const snapshot = state.layers.map(l => ({
-        data: new Uint32Array(l.data),
-        isMask: l.isMask
-    }));
-    state.undoStack.push(snapshot);
-    const maxDepth = _getMaxUndoDepth();
-    while (state.undoStack.length > maxDepth) state.undoStack.shift();
+    _commitUndoRecord();                  // 提交上一轮记录
+    state._undoRecording = [];            // 开启新一轮稀疏记录
     state.redoStack = [];
 }
 
@@ -1222,20 +1279,38 @@ function saveState() {
  * 撤销
  */
 function undo() {
+    _commitUndoRecord();                  // flush 当前记录
     if (state.undoStack.length === 0) return;
     const snapshot = state.undoStack.pop();
-    // 保存当前状态到 redo
-    state.redoStack.push(state.layers.map(l => ({
-        data: new Uint32Array(l.data),
-        isMask: l.isMask
-    })));
-    // 恢复
-    snapshot.forEach((s, i) => {
-        if (state.layers[i]) {
-            state.layers[i].data = s.data instanceof Uint32Array ? new Uint32Array(s.data) : new Uint32Array(Object.values(s.data));
-            state.layers[i].isMask = s.isMask;
+
+    if (snapshot.sparse) {
+        // 稀疏快照：写入 oldVal 还原
+        const changes = snapshot.changes;
+        const redoChanges = [];
+        const w = state.canvasWidth;
+        for (let i = 0; i < changes.length; i++) {
+            const c = changes[i];
+            const layer = state.layers[c[0]];
+            if (!layer) continue;
+            const cur = layer.data[c[2] * w + c[1]];
+            layer.data[c[2] * w + c[1]] = c[3];   // 写回 oldVal
+            redoChanges.push([c[0], c[1], c[2], c[3], cur]);  // [layerIdx,x,y,oldVal,newCur]
         }
-    });
+        state.redoStack.push({ sparse: true, changes: redoChanges });
+    } else {
+        // 全量快照：走原路径
+        const redoSnap = state.layers.map(l => ({
+            data: new Uint32Array(l.data),
+            isMask: l.isMask
+        }));
+        state.redoStack.push(redoSnap);
+        snapshot.forEach((s, i) => {
+            if (state.layers[i]) {
+                state.layers[i].data = s.data instanceof Uint32Array ? new Uint32Array(s.data) : new Uint32Array(Object.values(s.data));
+                state.layers[i].isMask = s.isMask;
+            }
+        });
+    }
     _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
@@ -1245,20 +1320,36 @@ function undo() {
  * 重做
  */
 function redo() {
+    _commitUndoRecord();                  // flush 当前记录
     if (state.redoStack.length === 0) return;
     const snapshot = state.redoStack.pop();
-    // 保存当前状态到 undo
-    state.undoStack.push(state.layers.map(l => ({
-        data: new Uint32Array(l.data),
-        isMask: l.isMask
-    })));
-    // 恢复
-    snapshot.forEach((s, i) => {
-        if (state.layers[i]) {
-            state.layers[i].data = s.data instanceof Uint32Array ? new Uint32Array(s.data) : new Uint32Array(Object.values(s.data));
-            state.layers[i].isMask = s.isMask;
+
+    if (snapshot.sparse) {
+        const changes = snapshot.changes;
+        const undoChanges = [];
+        const w = state.canvasWidth;
+        for (let i = 0; i < changes.length; i++) {
+            const c = changes[i];
+            const layer = state.layers[c[0]];
+            if (!layer) continue;
+            const cur = layer.data[c[2] * w + c[1]];
+            layer.data[c[2] * w + c[1]] = c[4];   // 写回 newVal (索引4=redo时的newVal)
+            undoChanges.push([c[0], c[1], c[2], cur, c[4]]);
         }
-    });
+        state.undoStack.push({ sparse: true, changes: undoChanges });
+    } else {
+        const undoSnap = state.layers.map(l => ({
+            data: new Uint32Array(l.data),
+            isMask: l.isMask
+        }));
+        state.undoStack.push(undoSnap);
+        snapshot.forEach((s, i) => {
+            if (state.layers[i]) {
+                state.layers[i].data = s.data instanceof Uint32Array ? new Uint32Array(s.data) : new Uint32Array(Object.values(s.data));
+                state.layers[i].isMask = s.isMask;
+            }
+        });
+    }
     _invalidateLayerCache();
     renderCanvas();
     renderLayerList();
