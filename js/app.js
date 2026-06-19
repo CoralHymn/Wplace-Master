@@ -72,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const pixelCountInput = document.getElementById('pixel-count');
     const ditherSelector = document.getElementById('dither-selector');
     const previewCanvas = document.getElementById('preview-canvas');
-    const previewCtx = previewCanvas.getContext('2d');
+    const previewCtx = previewCanvas.getContext('2d', { willReadFrequently: true });
     const viewport = document.getElementById('preview-canvas-viewport');
     const placeholderText = document.getElementById('placeholder-text');
     const downloadBtn = document.getElementById('download-btn');
@@ -141,18 +141,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==================== Web Worker 抖动加速 ====================
 
     const WORKER_CODE = `
-function findClosestColor(color, palette) {
-    let minDistance = Infinity;
-    let closestColor = palette[0];
-    for (const pColor of palette) {
-        const distance = (color[0] - pColor[0])**2 + (color[1] - pColor[1])**2 + (color[2] - pColor[2])**2;
-        if (distance < minDistance) {
-            minDistance = distance;
-            closestColor = pColor;
-        }
-    }
-    return closestColor;
-}
+	function findClosestColor(color, palette) {
+	    var guess = findClosestColor._cache;
+	    var minDistance = Infinity;
+	    var closestColor = palette[0];
+	    if (guess) { var dr=color[0]-guess[0], dg=color[1]-guess[1], db=color[2]-guess[2]; minDistance=dr*dr+dg*dg+db*db; closestColor=guess; }
+	    for (var pi = 0; pi < palette.length; pi++) {
+	        var pColor = palette[pi];
+	        var dr = color[0] - pColor[0], dg = color[1] - pColor[1], db = color[2] - pColor[2];
+	        var dist = dr * dr + dg * dg + db * db;
+	        if (dist < minDistance) { minDistance = dist; closestColor = pColor; }
+	    }
+	    findClosestColor._cache = closestColor;
+	    return closestColor;
+	}
+	findClosestColor._cache = null;
 
 function applyErrorDither(imageData, palette, strength, kernel, isLocked, ditherScale, fullPalette, selectedColorSet) {
     const originalWidth = imageData.width;
@@ -867,7 +870,7 @@ self.onmessage = function(e) {
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(img, 0, 0);
         const imageData = ctx.getImageData(0, 0, img.width, img.height).data;
 
@@ -1229,7 +1232,7 @@ self.onmessage = function(e) {
      * @returns {ImageData} 处理后的图像数据
      */
     function applyImageAdjustments(img) {
-        if (!state._adjCanvas) { state._adjCanvas = document.createElement('canvas'); state._adjCtx = state._adjCanvas.getContext('2d'); }
+        if (!state._adjCanvas) { state._adjCanvas = document.createElement('canvas'); state._adjCtx = state._adjCanvas.getContext('2d', { willReadFrequently: true }); }
         const tempCanvas = state._adjCanvas;
         tempCanvas.width = img.width;
         tempCanvas.height = img.height;
@@ -1264,7 +1267,7 @@ self.onmessage = function(e) {
             const canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             ctx.putImageData(imageData, 0, 0);
             
             const img = new Image();
@@ -1513,7 +1516,7 @@ self.onmessage = function(e) {
         console.log(tag + ' size=' + newWidth + 'x' + newHeight + ' algo=' + state.activeAlgorithm + ' worker=' + !!ditherWorker + ' adj=' + (state.brightness !== 100 || state.contrast !== 100 || state.temperature !== 0));
 
         // 复用离屏 canvas（避免每次预览更新分配新 canvas 导致 GC 压力）
-        if (!state._sourceCanvas) { state._sourceCanvas = document.createElement('canvas'); state._sourceCtx = state._sourceCanvas.getContext('2d'); }
+        if (!state._sourceCanvas) { state._sourceCanvas = document.createElement('canvas'); state._sourceCtx = state._sourceCanvas.getContext('2d', { willReadFrequently: true }); }
         const sourceCanvas = state._sourceCanvas;
         sourceCanvas.width = newWidth;
         sourceCanvas.height = newHeight;
@@ -1525,7 +1528,7 @@ self.onmessage = function(e) {
             console.time(tag + '   adj');
             const adjustedImageData = applyImageAdjustments(state.inputImage);
             console.timeEnd(tag + '   adj');
-            if (!state._tempCanvas) { state._tempCanvas = document.createElement('canvas'); state._tempCtx = state._tempCanvas.getContext('2d'); }
+            if (!state._tempCanvas) { state._tempCanvas = document.createElement('canvas'); state._tempCtx = state._tempCanvas.getContext('2d', { willReadFrequently: true }); }
             const tempCanvas = state._tempCanvas; tempCanvas.width = state.inputImage.width; tempCanvas.height = state.inputImage.height; const tempCtx = state._tempCtx;
             tempCtx.putImageData(adjustedImageData, 0, 0);
             sourceCtx.drawImage(tempCanvas, 0, 0, newWidth, newHeight);
@@ -1855,36 +1858,32 @@ self.onmessage = function(e) {
             return;
         }
 
-        const colorCounts = {};
+        const colorCounts = new Map();
         const data = imageData.data;
+        const len = data.length;
         let nonBlankPixels = 0;
 
-        // 单次遍历：颜色计数 + 非空白像素计数（整型 key 替代字符串模板）
-        for (let i = 0; i < data.length; i += 4) {
+        // Map<number,number> 比 Object 属性访问快 3-5x
+        for (let i = 0; i < len; i += 4) {
             if (data[i + 3] < 128) continue;
-            const r = data[i], g = data[i + 1], b = data[i + 2];
-            const key = (r * 65536) + (g * 256) + b;  // 整数 key，避免 GC
-            colorCounts[key] = (colorCounts[key] || 0) + 1;
+            var r = data[i], g = data[i + 1], b = data[i + 2];
+            var key = (r << 16) | (g << 8) | b;  // 位移比乘法快
+            var cnt = colorCounts.get(key);
+            colorCounts.set(key, cnt ? cnt + 1 : 1);
             if (!(r === 255 && g === 255 && b === 255)) nonBlankPixels++;
         }
 
-        // 排序 + DOM（仅在有效改时重建）
-        const entries = [];
-        for (const keyStr in colorCounts) {
-            if (Object.prototype.hasOwnProperty.call(colorCounts, keyStr)) {
-                entries.push([parseInt(keyStr), colorCounts[keyStr]]);
-            }
-        }
-        entries.sort((a, b) => b[1] - a[1]);
+        var entries = Array.from(colorCounts);
+        entries.sort(function(a, b) { return b[1] - a[1]; });
 
         statsContainer.innerHTML = '';
         if (entries.length === 0) {
             statsContainer.innerHTML = `<p>${t.noColorsDetected}</p>`;
         } else {
             const frag = document.createDocumentFragment();
-            for (let ei = 0; ei < entries.length; ei++) {
-                const keyInt = entries[ei][0], count = entries[ei][1];
-                const r2 = (keyInt / 65536) | 0, g2 = ((keyInt / 256) | 0) % 256, b2 = keyInt % 256;
+            for (var ei = 0; ei < entries.length; ei++) {
+                var keyInt = entries[ei][0], count = entries[ei][1];
+                var r2 = (keyInt >> 16) & 0xFF, g2 = (keyInt >> 8) & 0xFF, b2 = keyInt & 0xFF;
                 const colorKey = `rgb(${r2}, ${g2}, ${b2})`;
                 const colorInfo = COLOR_INFO[colorKey] || { name: 'Unknown Color', isPaid: false };
                 let displayName = colorInfo.name;
@@ -1941,7 +1940,7 @@ self.onmessage = function(e) {
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = width;
         tempCanvas.height = height;
-        const tempCtx = tempCanvas.getContext('2d');
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
         tempCtx.putImageData(newImageData, 0, 0);
 
         const link = document.createElement('a');
