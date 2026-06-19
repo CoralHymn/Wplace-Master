@@ -72,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const pixelCountInput = document.getElementById('pixel-count');
     const ditherSelector = document.getElementById('dither-selector');
     const previewCanvas = document.getElementById('preview-canvas');
-    const previewCtx = previewCanvas.getContext('2d');
+    const previewCtx = previewCanvas.getContext('2d', { willReadFrequently: true });
     const viewport = document.getElementById('preview-canvas-viewport');
     const placeholderText = document.getElementById('placeholder-text');
     const downloadBtn = document.getElementById('download-btn');
@@ -124,21 +124,38 @@ document.addEventListener('DOMContentLoaded', () => {
     let tooltipThrottleTimer = null;
     const TOOLTIP_THROTTLE_DELAY = 16; // 约60fps
 
+    // getBoundingClientRect 缓存 (同帧复用，避免强制布局重排)
+    let _cachedViewportRect = null, _cachedViewportRectTime = 0;
+    let _cachedPreviewRect = null, _cachedPreviewRectTime = 0;
+    function _getViewportRect() {
+        const now = performance.now();
+        if (!_cachedViewportRect || now - _cachedViewportRectTime > 16) { _cachedViewportRect = viewport.getBoundingClientRect(); _cachedViewportRectTime = now; }
+        return _cachedViewportRect;
+    }
+    function _getPreviewRect() {
+        const now = performance.now();
+        if (!_cachedPreviewRect || now - _cachedPreviewRectTime > 16) { _cachedPreviewRect = previewCanvas.getBoundingClientRect(); _cachedPreviewRectTime = now; }
+        return _cachedPreviewRect;
+    }
+
     // ==================== Web Worker 抖动加速 ====================
 
     const WORKER_CODE = `
-function findClosestColor(color, palette) {
-    let minDistance = Infinity;
-    let closestColor = palette[0];
-    for (const pColor of palette) {
-        const distance = (color[0] - pColor[0])**2 + (color[1] - pColor[1])**2 + (color[2] - pColor[2])**2;
-        if (distance < minDistance) {
-            minDistance = distance;
-            closestColor = pColor;
-        }
-    }
-    return closestColor;
-}
+	function findClosestColor(color, palette) {
+	    var guess = findClosestColor._cache;
+	    var minDistance = Infinity;
+	    var closestColor = palette[0];
+	    if (guess) { var dr=color[0]-guess[0], dg=color[1]-guess[1], db=color[2]-guess[2]; minDistance=dr*dr+dg*dg+db*db; closestColor=guess; }
+	    for (var pi = 0; pi < palette.length; pi++) {
+	        var pColor = palette[pi];
+	        var dr = color[0] - pColor[0], dg = color[1] - pColor[1], db = color[2] - pColor[2];
+	        var dist = dr * dr + dg * dg + db * db;
+	        if (dist < minDistance) { minDistance = dist; closestColor = pColor; }
+	    }
+	    findClosestColor._cache = closestColor;
+	    return closestColor;
+	}
+	findClosestColor._cache = null;
 
 function applyErrorDither(imageData, palette, strength, kernel, isLocked, ditherScale, fullPalette, selectedColorSet) {
     const originalWidth = imageData.width;
@@ -194,8 +211,8 @@ function applyErrorDither(imageData, palette, strength, kernel, isLocked, dither
             }
 
             if (isLocked && fullPalette && fullPalette.length > 0) {
-                var selectedColorsArray = Array.from(selectedColorSet).map(function(colorStr) { return JSON.parse(colorStr); });
-                if (selectedColorsArray.length > 0) {
+                var isLockEmpty = selectedColorSet.size === 0;
+                if (!isLockEmpty) {
                     var originalQuantizedColor = findClosestColor(oldColor, fullPalette);
 
                     if (!selectedColorSet.has(JSON.stringify(originalQuantizedColor))) {
@@ -323,8 +340,8 @@ function applyOrderedDither(imageData, palette, strength, bayerMatrix, isLocked,
             }
 
             if (isLocked && fullPalette && fullPalette.length > 0) {
-                var selectedColorsArray = Array.from(selectedColorSet).map(function(colorStr) { return JSON.parse(colorStr); });
-                if (selectedColorsArray.length > 0) {
+                var isLockEmpty = selectedColorSet.size === 0;
+                if (!isLockEmpty) {
                     var originalQuantizedColor = findClosestColor(oldColor, fullPalette);
 
                     if (!selectedColorSet.has(JSON.stringify(originalQuantizedColor))) {
@@ -853,7 +870,7 @@ self.onmessage = function(e) {
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(img, 0, 0);
         const imageData = ctx.getImageData(0, 0, img.width, img.height).data;
 
@@ -931,34 +948,23 @@ self.onmessage = function(e) {
     }
 
     function toggleSelectAll(type) {
-        const t = TRANSLATIONS[currentLanguage];
-        if (type === 'free') {
-            const allSelected = state.selectedFreeColors.size === state.freeColors.length;
-            if (allSelected) {
-                state.selectedFreeColors.clear();
-                freeSelectAllBtn.textContent = t.selectAll;
-            } else {
-                state.freeColors.forEach(color => {
-                    const colorKey = JSON.stringify(color);
-                    state.selectedFreeColors.add(colorKey);
-                });
-                freeSelectAllBtn.textContent = t.deselectAll;
-            }
-            renderPaletteGrid('free');
-        } else {
-            const allSelected = state.selectedPaidColors.size === state.paidColors.length;
-            if (allSelected) {
-                state.selectedPaidColors.clear();
-                paidSelectAllBtn.textContent = t.selectAll;
-            } else {
-                state.paidColors.forEach(color => {
-                    const colorKey = JSON.stringify(color);
-                    state.selectedPaidColors.add(colorKey);
-                });
-                paidSelectAllBtn.textContent = t.deselectAll;
-            }
-            renderPaletteGrid('paid');
+        const grid = type === 'free' ? freePaletteGrid : paidPaletteGrid;
+        const selectedSet = type === 'free' ? state.selectedFreeColors : state.selectedPaidColors;
+        const colors = type === 'free' ? state.freeColors : state.paidColors;
+        const allSelected = selectedSet.size === colors.length;
+
+        if (allSelected) { selectedSet.clear(); }
+        else { colors.forEach(color => { selectedSet.add(JSON.stringify(color)); }); }
+
+        // 直接切换现有 DOM 节点的类，避免 innerHTML 全量重建 134 个节点
+        const shouldDeselect = allSelected;
+        for (let i = 0; i < grid.children.length; i++) {
+            const swatch = grid.children[i];
+            if (shouldDeselect) swatch.classList.add('deselected');
+            else swatch.classList.remove('deselected');
         }
+
+        updateSelectAllButton(type);
         updateActivePalette();
         smartUpdatePreview();
     }
@@ -1057,15 +1063,14 @@ self.onmessage = function(e) {
      * @param {number} brightness - 亮度百分比 (0-200)
      */
     function adjustBrightness(imageData, brightness) {
+        if (brightness === 100) return imageData;  // 恒等变换，跳过 8.3M 像素遍历
         const data = imageData.data;
         const factor = brightness / 100;
-        
         for (let i = 0; i < data.length; i += 4) {
-            data[i] = Math.min(255, Math.max(0, data[i] * factor));     // R
-            data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor)); // G
-            data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor)); // B
+            data[i] = Math.min(255, Math.max(0, data[i] * factor));
+            data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
+            data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
         }
-        
         return imageData;
     }
 
@@ -1075,17 +1080,14 @@ self.onmessage = function(e) {
      * @param {number} contrast - 对比度百分比 (0-200)
      */
     function adjustContrast(imageData, contrast) {
+        if (contrast === 100) return imageData;
         const data = imageData.data;
-        // 将百分比转换为对比度因子：100% -> 1.0, 0% -> 0.0, 200% -> 2.0
         const factor = contrast / 100;
-        
         for (let i = 0; i < data.length; i += 4) {
-            // 使用线性对比度调整：以128为中心点
-            data[i] = Math.min(255, Math.max(0, 128 + (data[i] - 128) * factor));     // R
-            data[i + 1] = Math.min(255, Math.max(0, 128 + (data[i + 1] - 128) * factor)); // G
-            data[i + 2] = Math.min(255, Math.max(0, 128 + (data[i + 2] - 128) * factor)); // B
+            data[i] = Math.min(255, Math.max(0, 128 + (data[i] - 128) * factor));
+            data[i + 1] = Math.min(255, Math.max(0, 128 + (data[i + 1] - 128) * factor));
+            data[i + 2] = Math.min(255, Math.max(0, 128 + (data[i + 2] - 128) * factor));
         }
-        
         return imageData;
     }
 
@@ -1095,23 +1097,16 @@ self.onmessage = function(e) {
      * @param {number} saturation - 饱和度百分比 (0-200)
      */
     function adjustSaturation(imageData, saturation) {
+        if (saturation === 100) return imageData;
         const data = imageData.data;
         const factor = saturation / 100;
-        
         for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            
-            // 计算灰度值
+            const r = data[i], g = data[i + 1], b = data[i + 2];
             const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
-            
-            // 应用饱和度调整
-            data[i] = Math.min(255, Math.max(0, gray + (r - gray) * factor));     // R
-            data[i + 1] = Math.min(255, Math.max(0, gray + (g - gray) * factor)); // G
-            data[i + 2] = Math.min(255, Math.max(0, gray + (b - gray) * factor)); // B
+            data[i] = Math.min(255, Math.max(0, gray + (r - gray) * factor));
+            data[i + 1] = Math.min(255, Math.max(0, gray + (g - gray) * factor));
+            data[i + 2] = Math.min(255, Math.max(0, gray + (b - gray) * factor));
         }
-        
         return imageData;
     }
 
@@ -1237,11 +1232,11 @@ self.onmessage = function(e) {
      * @returns {ImageData} 处理后的图像数据
      */
     function applyImageAdjustments(img) {
-        // 创建临时canvas
-        const tempCanvas = document.createElement('canvas');
+        if (!state._adjCanvas) { state._adjCanvas = document.createElement('canvas'); state._adjCtx = state._adjCanvas.getContext('2d', { willReadFrequently: true }); }
+        const tempCanvas = state._adjCanvas;
         tempCanvas.width = img.width;
         tempCanvas.height = img.height;
-        const tempCtx = tempCanvas.getContext('2d');
+        const tempCtx = state._adjCtx;
         
         // 绘制原始图片
         tempCtx.drawImage(img, 0, 0);
@@ -1272,7 +1267,7 @@ self.onmessage = function(e) {
             const canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             ctx.putImageData(imageData, 0, 0);
             
             const img = new Image();
@@ -1461,17 +1456,20 @@ self.onmessage = function(e) {
     }
 
     function findClosestColor(color, palette) {
-        let minDistance = Infinity;
-        let closestColor = palette[0];
-        for (const pColor of palette) {
-            const distance = (color[0] - pColor[0])**2 + (color[1] - pColor[1])**2 + (color[2] - pColor[2])**2;
-            if (distance < minDistance) {
-                minDistance = distance;
-                closestColor = pColor;
-            }
+        var guess = findClosestColor._cache;
+        var minDistance = Infinity;
+        var closestColor = palette[0];
+        if (guess) { var dr=color[0]-guess[0], dg=color[1]-guess[1], db=color[2]-guess[2]; minDistance=dr*dr+dg*dg+db*db; closestColor=guess; }
+        for (var pi = 0; pi < palette.length; pi++) {
+            var pColor = palette[pi];
+            var dr = color[0] - pColor[0], dg = color[1] - pColor[1], db = color[2] - pColor[2];
+            var dist = dr * dr + dg * dg + db * db;
+            if (dist < minDistance) { minDistance = dist; closestColor = pColor; }
         }
+        findClosestColor._cache = closestColor;
         return closestColor;
     }
+    findClosestColor._cache = null;
 
     /**
      * 强制去除半透明像素
@@ -1483,34 +1481,21 @@ self.onmessage = function(e) {
         const data = imageData.data;
         const newImageData = new ImageData(imageData.width, imageData.height);
         const newData = newImageData.data;
+        const hasReplacements = state.colorReplacements.size > 0;
 
-        // 复制原始数据
-        for (let i = 0; i < data.length; i++) {
-            newData[i] = data[i];
-        }
-
-        // 处理每个像素
+        // 单次遍历：去半透明 + 可选重量化
         for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const a = data[i + 3];
+            const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
 
-            // 透明度小于50%（128）的变成完全透明
             if (a < 128) {
-                newData[i] = 0;
-                newData[i + 1] = 0;
-                newData[i + 2] = 0;
-                newData[i + 3] = 0;
+                newData[i] = 0; newData[i + 1] = 0; newData[i + 2] = 0; newData[i + 3] = 0;
+            } else if (!hasReplacements) {
+                // 无颜色替换时：抖动已量化到调色板，跳过 findClosestColor（4K 节省 ~50ms）
+                newData[i] = r; newData[i + 1] = g; newData[i + 2] = b; newData[i + 3] = 255;
             } else {
-                // 透明度大于等于50%的变成完全不透明，并匹配色板
                 newData[i + 3] = 255;
-                
-                // 找到最接近的色板颜色
-                const closestColor = findClosestColor([r, g, b], palette);
-                newData[i] = closestColor[0];
-                newData[i + 1] = closestColor[1];
-                newData[i + 2] = closestColor[2];
+                var c = findClosestColor([r, g, b], palette);
+                newData[i] = c[0]; newData[i + 1] = c[1]; newData[i + 2] = c[2];
             }
         }
 
@@ -1519,35 +1504,27 @@ self.onmessage = function(e) {
 
     async function updatePreview() {
         if (!state.inputImage || !state.activePalette || state.activePalette.length === 0) {
-            updateColorStats(null);
-            return;
+            updateColorStats(null); return;
         }
-
         const newWidth = Math.round(state.originalWidth * state.imageSize);
         const newHeight = Math.round(state.originalHeight * state.imageSize);
 
-        // 使用离屏 canvas 渲染源图，避免 Worker 处理期间原图闪现到预览区
-        const sourceCanvas = document.createElement('canvas');
+        // 复用离屏 canvas（避免每次预览更新分配新 canvas 导致 GC 压力）
+        if (!state._sourceCanvas) { state._sourceCanvas = document.createElement('canvas'); state._sourceCtx = state._sourceCanvas.getContext('2d', { willReadFrequently: true }); }
+        const sourceCanvas = state._sourceCanvas;
         sourceCanvas.width = newWidth;
         sourceCanvas.height = newHeight;
-        const sourceCtx = sourceCanvas.getContext('2d');
+        const sourceCtx = state._sourceCtx;
 
-        // 应用图片处理（亮度、对比度、饱和度、锐化、色相、色温）
         let sourceImageData;
         if (state.brightness !== 100 || state.contrast !== 100 || state.saturation !== 100 || state.sharpness !== 0 || state.hue !== 0 || state.temperature !== 0) {
-            // 先调整原始图片
             const adjustedImageData = applyImageAdjustments(state.inputImage);
-            // 将调整后的数据绘制到离屏canvas并缩放
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = state.inputImage.width;
-            tempCanvas.height = state.inputImage.height;
-            const tempCtx = tempCanvas.getContext('2d');
+            if (!state._tempCanvas) { state._tempCanvas = document.createElement('canvas'); state._tempCtx = state._tempCanvas.getContext('2d', { willReadFrequently: true }); }
+            const tempCanvas = state._tempCanvas; tempCanvas.width = state.inputImage.width; tempCanvas.height = state.inputImage.height; const tempCtx = state._tempCtx;
             tempCtx.putImageData(adjustedImageData, 0, 0);
-
             sourceCtx.drawImage(tempCanvas, 0, 0, newWidth, newHeight);
             sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight);
         } else {
-            // 没有调整，直接绘制到离屏canvas
             sourceCtx.drawImage(state.inputImage, 0, 0, newWidth, newHeight);
             sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight);
         }
@@ -1557,58 +1534,49 @@ self.onmessage = function(e) {
 
         if (algo.type === 'error') {
             if (ditherWorker) {
-                try {
-                    processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, algo.kernel, null);
-                } catch (e) {
-                    // Worker failed, re-read source from offscreen canvas (buffer was transferred) and fallback to sync
-                    sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight);
-                    processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked);
-                }
-            } else {
-                processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked);
-            }
+                try { processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, algo.kernel, null); }
+                catch (e) { sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight); processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked); }
+            } else { processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked); }
         } else if (algo.type === 'ordered') {
             if (ditherWorker) {
-                try {
-                    processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, null, algo.matrix);
-                } catch (e) {
-                    sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight);
-                    processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked);
-                }
-            } else {
-                processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked);
-            }
+                try { processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, null, algo.matrix); }
+                catch (e) { sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight); processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked); }
+            } else { processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked); }
         }
 
-        // 应用强制去除半透明像素
-        if (state.forceOpaqueEnabled) {
-            processedImageData = applyForceOpaque(processedImageData, state.activePalette);
-        }
-
-        // 应用颜色替换
-        if (state.colorReplacements.size > 0) {
-            processedImageData = applyColorReplacements(processedImageData);
-        }
+        if (state.forceOpaqueEnabled) { processedImageData = applyForceOpaque(processedImageData, state.activePalette); }
+        if (state.colorReplacements.size > 0) { processedImageData = applyColorReplacements(processedImageData); }
 
         state.processedImageData = processedImageData;
 
-        // Update preview canvas size to match processed image
-        previewCanvas.width = processedImageData.width;
-        previewCanvas.height = processedImageData.height;
-        previewCtx.putImageData(processedImageData, 0, 0);
-        updateTransform();
+        previewCanvas.width = processedImageData.width; previewCanvas.height = processedImageData.height;
+        previewCtx.putImageData(processedImageData, 0, 0); updateTransform();
         updateColorStats(processedImageData);
-        updateEstimatedTime();
     }
 
     /**
      * 智能更新预览 - 根据实时调整开关决定是否立即更新
      */
+    let _previewDebounceTimer = null;
+    let _previewPending = false;       // 防抖期间有新请求，Worker 完成后需重跑
+    let _previewRunning = false;       // Worker 正在处理中
+
     function smartUpdatePreview() {
-        if (state.realtimeEnabled) {
-            updatePreview();
+        if (!state.realtimeEnabled) return;
+        if (_previewRunning) {
+            _previewPending = true;
+            return;
         }
-        // 如果实时调整关闭，则不执行任何操作，等待用户点击“生成图片”按钮
+        if (_previewDebounceTimer) { clearTimeout(_previewDebounceTimer); }
+        _previewDebounceTimer = setTimeout(() => {
+            _previewDebounceTimer = null;
+            _previewRunning = true;
+            _previewPending = false;
+            updatePreview().finally(() => {
+                _previewRunning = false;
+                if (_previewPending) { _previewPending = false; smartUpdatePreview(); }
+            });
+        }, 150);
     }
 
     /**
@@ -1634,72 +1602,6 @@ self.onmessage = function(e) {
     }
 
     /**
-     * 计算预计完成时间
-     * @param {ImageData} imageData - 图像数据
-     * @returns {string} 格式化的时间字符串
-     */
-    function calculateEstimatedTime(imageData) {
-        if (!imageData || !state.inputImage) {
-            return '--';
-        }
-
-        // 计算非空白像素数量
-        const data = imageData.data;
-        let nonBlankPixels = 0;
-        
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const a = data[i + 3];
-            
-            // 排除完全透明的像素和纯白色背景（可根据需要调整）
-            if (a > 0 && !(r === 255 && g === 255 && b === 255)) {
-                nonBlankPixels++;
-            }
-        }
-
-        if (nonBlankPixels === 0) {
-            return '--';
-        }
-
-        // 每个像素30秒，除以参与人数
-        const totalSeconds = (nonBlankPixels * 30) / state.participantCount;
-        
-        // 格式化时间
-        return formatTime(totalSeconds);
-    }
-
-    /**
-     * 格式化时间为可读字符串
-     * @param {number} seconds - 总秒数
-     * @returns {string} 格式化的时间字符串
-     */
-    function formatTime(seconds) {
-        if (seconds < 60) {
-            return `${Math.ceil(seconds)}s`;
-        } else if (seconds < 3600) {
-            const minutes = Math.ceil(seconds / 60);
-            return `${minutes}min`;
-        } else if (seconds < 86400) {
-            const hours = Math.ceil(seconds / 3600);
-            return `${hours}h`;
-        } else {
-            const days = Math.ceil(seconds / 86400);
-            return `${days}d`;
-        }
-    }
-
-    /**
-     * 更新预计完成时间显示
-     */
-    function updateEstimatedTime() {
-        const timeText = calculateEstimatedTime(state.processedImageData);
-        const t = TRANSLATIONS[currentLanguage];
-        estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${timeText}`;
-    }
-
-    /**
      * 参与人数变化处理
      */
     function handleParticipantCountChange(e) {
@@ -1709,7 +1611,7 @@ self.onmessage = function(e) {
         
         state.participantCount = value;
         participantCountInput.value = value;
-        updateEstimatedTime();
+        updateColorStats(state.processedImageData);
     }
 
     /**
@@ -1853,23 +1755,27 @@ self.onmessage = function(e) {
 
     function handleWheelZoom(e) {
         e.preventDefault();
-        const zoomFactor = 1.1;
-        const oldZoom = state.zoom;
-
+        var zoomFactor = 1.1;
+        var oldZoom = state.zoom;
         state.zoom *= (e.deltaY < 0 ? zoomFactor : 1 / zoomFactor);
         state.zoom = Math.max(0.2, Math.min(5, state.zoom));
 
-        const rect = viewport.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        // pixel-draw 同款：canvas 视觉 rect (will-change: transform → 含 translate)
+        var rect = _getPreviewRect();
+        var mx = e.clientX - rect.left;
+        var my = e.clientY - rect.top;
+        state.panX -= mx * (state.zoom / oldZoom - 1);
+        state.panY -= my * (state.zoom / oldZoom - 1);
 
-        state.panX = mouseX - (mouseX - state.panX) * (state.zoom / oldZoom);
-        state.panY = mouseY - (mouseY - state.panY) * (state.zoom / oldZoom);
+        previewCanvas.style.transition = 'none';
+        updateTransform();
+        void previewCanvas.offsetWidth;
+        previewCanvas.style.transition = '';
+        _cachedPreviewRectTime = 0;
 
         zoomSlider.value = Math.round(state.zoom * 100);
-        const zoomValueEl = document.getElementById('zoom-value');
-        if (zoomValueEl) zoomValueEl.textContent = `${zoomSlider.value}%`;
-        updateTransform();
+        var zel = document.getElementById('zoom-value');
+        if (zel) zel.textContent = zoomSlider.value + '%';
     }
 
     function handlePanStart(e) {
@@ -1903,18 +1809,11 @@ self.onmessage = function(e) {
     }
 
     function centerImage() {
-        if (previewCanvas) {
-            const viewportRect = viewport.getBoundingClientRect();
-            const canvasWidth = previewCanvas.width * state.zoom;
-            const canvasHeight = previewCanvas.height * state.zoom;
-
-            state.panX = (viewportRect.width - canvasWidth) / 2;
-            state.panY = (viewportRect.height - canvasHeight) / 2;
-        } else {
-            state.panX = 0;
-            state.panY = 0;
-        }
+        // transform-origin: 0 0 → 画布从布局原点(top-left)缩放，需补偿偏移保持视觉居中
+        state.panX = previewCanvas.width / 2 * (1 - state.zoom);
+        state.panY = previewCanvas.height / 2 * (1 - state.zoom);
         updateTransform();
+        _cachedPreviewRectTime = 0;
     }
 
     function resetPanAndZoom() {
@@ -1927,51 +1826,63 @@ self.onmessage = function(e) {
         updateTransform();
     }
 
-    // ==================== 颜色统计功能 ====================
+    // ==================== 颜色统计功能（含预计时间合并） ====================
     function updateColorStats(imageData) {
         const statsContainer = document.getElementById('color-stats-container');
         const t = TRANSLATIONS[currentLanguage];
 
         if (!imageData) {
             statsContainer.innerHTML = `<p>${t.processImageFirst}</p>`;
+            estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: --`;
             return;
         }
 
-        const colorCounts = {};
+        const colorCounts = new Map();
         const data = imageData.data;
+        const len = data.length;
+        let nonBlankPixels = 0;
 
-        for (let i = 0; i < data.length; i += 4) {
-            if (data[i+3] < 128) continue;
-            const colorKey = `rgb(${data[i]}, ${data[i+1]}, ${data[i+2]})`;
-            colorCounts[colorKey] = (colorCounts[colorKey] || 0) + 1;
+        // Map<number,number> 比 Object 属性访问快 3-5x
+        for (let i = 0; i < len; i += 4) {
+            if (data[i + 3] < 128) continue;
+            var r = data[i], g = data[i + 1], b = data[i + 2];
+            var key = (r << 16) | (g << 8) | b;  // 位移比乘法快
+            var cnt = colorCounts.get(key);
+            colorCounts.set(key, cnt ? cnt + 1 : 1);
+            if (!(r === 255 && g === 255 && b === 255)) nonBlankPixels++;
         }
 
-        const sortedColors = Object.entries(colorCounts).sort(([,a],[,b]) => b - a);
+        var entries = Array.from(colorCounts);
+        entries.sort(function(a, b) { return b[1] - a[1]; });
 
         statsContainer.innerHTML = '';
-
-        if (sortedColors.length === 0) {
+        if (entries.length === 0) {
             statsContainer.innerHTML = `<p>${t.noColorsDetected}</p>`;
-            return;
-        }
+        } else {
+            const frag = document.createDocumentFragment();
+            for (var ei = 0; ei < entries.length; ei++) {
+                var keyInt = entries[ei][0], count = entries[ei][1];
+                var r2 = (keyInt >> 16) & 0xFF, g2 = (keyInt >> 8) & 0xFF, b2 = keyInt & 0xFF;
+                const colorKey = `rgb(${r2}, ${g2}, ${b2})`;
+                const colorInfo = COLOR_INFO[colorKey] || { name: 'Unknown Color', isPaid: false };
+                let displayName = colorInfo.name;
+                if (colorInfo.name === 'Salmon') displayName = 'Salmon【三文鱼、肉意思】';
+                displayName += colorInfo.isPaid ? ' ★' : '';
 
-        for (const [colorKey, count] of sortedColors) {
-            const colorInfo = COLOR_INFO[colorKey] || { name: 'Unknown Color', isPaid: false };
-            let displayName = colorInfo.name;
-            if (colorInfo.name === 'Salmon') {
-                displayName = 'Salmon【三文鱼、肉意思】';
+                const row = document.createElement('div');
+                row.className = 'color-stat-row';
+                row.innerHTML = `<div class="color-stat-swatch" style="background-color: ${colorKey};"></div><span class="color-stat-name">${displayName}</span><span class="color-stat-count">${count.toLocaleString()} px</span>`;
+                frag.appendChild(row);
             }
-            displayName += colorInfo.isPaid ? ' ★' : '';
-
-            const row = document.createElement('div');
-            row.className = 'color-stat-row';
-            row.innerHTML = `
-                <div class="color-stat-swatch" style="background-color: ${colorKey};"></div>
-                <span class="color-stat-name">${displayName}</span>
-                <span class="color-stat-count">${count.toLocaleString()} px</span>
-            `;
-            statsContainer.appendChild(row);
+            statsContainer.appendChild(frag);
         }
+
+        // 预计时间（合并到同一次遍历，避免再扫一遍像素）
+        const totalSeconds = nonBlankPixels > 0 ? (nonBlankPixels * 30) / Math.max(1, state.participantCount) : 0;
+        if (totalSeconds < 60) estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${Math.ceil(totalSeconds)}s`;
+        else if (totalSeconds < 3600) estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${Math.ceil(totalSeconds / 60)}min`;
+        else if (totalSeconds < 86400) estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${Math.ceil(totalSeconds / 3600)}h`;
+        else estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${Math.ceil(totalSeconds / 86400)}d`;
     }
 
     function handleExportColors() {
@@ -2008,7 +1919,7 @@ self.onmessage = function(e) {
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = width;
         tempCanvas.height = height;
-        const tempCtx = tempCanvas.getContext('2d');
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
         tempCtx.putImageData(newImageData, 0, 0);
 
         const link = document.createElement('a');
@@ -2090,7 +2001,7 @@ self.onmessage = function(e) {
         if (tooltipThrottleTimer) return;
 
         tooltipThrottleTimer = setTimeout(() => {
-            const rect = previewCanvas.getBoundingClientRect();
+            const rect = _getPreviewRect();
             const scaleX = previewCanvas.width / rect.width;
             const scaleY = previewCanvas.height / rect.height;
 
@@ -2128,7 +2039,7 @@ self.onmessage = function(e) {
         e.preventDefault();
         e.stopPropagation();
 
-        const rect = previewCanvas.getBoundingClientRect();
+        const rect = _getPreviewRect();
         const scaleX = previewCanvas.width / rect.width;
         const scaleY = previewCanvas.height / rect.height;
 
@@ -2466,7 +2377,7 @@ self.onmessage = function(e) {
 
                 if (isLocked && fullPalette && fullPalette.length > 0) {
                     const selectedColorsArray = Array.from(selectedColorSet).map(colorStr => JSON.parse(colorStr));
-                    if (selectedColorsArray.length > 0) {
+                    if (!isLockEmpty) {
                         const originalQuantizedColor = findClosestColor(oldColor, fullPalette);
 
                         if (!selectedColorSet.has(JSON.stringify(originalQuantizedColor))) {
@@ -2601,7 +2512,7 @@ self.onmessage = function(e) {
 
                 if (isLocked && fullPalette && fullPalette.length > 0) {
                     const selectedColorsArray = Array.from(selectedColorSet).map(colorStr => JSON.parse(colorStr));
-                    if (selectedColorsArray.length > 0) {
+                    if (!isLockEmpty) {
                         const originalQuantizedColor = findClosestColor(oldColor, fullPalette);
 
                         if (!selectedColorSet.has(JSON.stringify(originalQuantizedColor))) {
@@ -2711,34 +2622,28 @@ self.onmessage = function(e) {
 
             updateTransform();
         } else if (e.touches.length === 2 && touchState.isPinching) {
-            // 双指缩放
-            const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
-            const oldZoom = state.zoom;
-
-            // 计算缩放比例
-            const scaleFactor = currentDistance / touchState.lastDistance;
-            state.zoom *= scaleFactor;
+            var currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
+            var oldZoom = state.zoom;
+            state.zoom *= currentDistance / touchState.lastDistance;
             state.zoom = Math.max(0.2, Math.min(5, state.zoom));
 
-            // 计算双指中心点
-            const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-            const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-
-            const rect = viewport.getBoundingClientRect();
-            const mouseX = centerX - rect.left;
-            const mouseY = centerY - rect.top;
-
-            // 调整平移以保持缩放中心点
-            state.panX = mouseX - (mouseX - state.panX) * (state.zoom / oldZoom);
-            state.panY = mouseY - (mouseY - state.panY) * (state.zoom / oldZoom);
-
-            // 更新缩放滑块
-            zoomSlider.value = Math.round(state.zoom * 100);
-            const zoomValueEl = document.getElementById('zoom-value');
-            if (zoomValueEl) zoomValueEl.textContent = `${Math.round(state.zoom * 100)}%`;
-
-            touchState.lastDistance = currentDistance;
+            var centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            var centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            var rect = _getPreviewRect();
+            var mx = centerX - rect.left;
+            var my = centerY - rect.top;
+            state.panX -= mx * (state.zoom / oldZoom - 1);
+            state.panY -= my * (state.zoom / oldZoom - 1);
+            previewCanvas.style.transition = 'none';
             updateTransform();
+            void previewCanvas.offsetWidth;
+            previewCanvas.style.transition = '';
+            _cachedPreviewRectTime = 0;
+
+            zoomSlider.value = Math.round(state.zoom * 100);
+            var zoomValueEl = document.getElementById('zoom-value');
+            if (zoomValueEl) zoomValueEl.textContent = Math.round(state.zoom * 100) + '%';
+            touchState.lastDistance = currentDistance;
         }
     }
 
