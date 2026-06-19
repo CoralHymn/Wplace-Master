@@ -30,6 +30,7 @@ function _setPixel(data, w, x, y, val) {
         }
     }
     data[y * w + x] = val;
+    if (!state._hasContent && (val & 0xFF000000) !== 0) state._hasContent = true;
 }
 
 function _isOpaque(pixel) {
@@ -91,6 +92,7 @@ const state = {
     _undoRecording: null,       // [{layerIndex,x,y,oldVal}] | null=不在记录
     _undoMemoryUsed: 0,         // 所有快照占用的估算内存(字节)
     _undoMemoryLimit: 268435456, // 256MB 默认，init 时按设备调整
+    _hasContent: false,          // 快速检测画布是否有非透明像素
     isDrawing: false,
     lastX: null,
     lastY: null,
@@ -202,6 +204,7 @@ function setCanvasSize(width, height) {
     state._layerCanvasCache[0] = initCache;
     state._layerCanvasDirty = [true];
     state._dirtyRects = [null];
+    state._hasContent = false;
 
     // 设置画布背景色
     canvas.style.backgroundColor = state.canvasBgColor;
@@ -248,6 +251,8 @@ function loadImageToCanvas(img) {
         }
     }
 
+    // 图片导入后保守设 _hasContent（遍历中已写 _packRGB > 0 则为 true）
+    state._hasContent = true;
     _invalidateLayerCache(state.activeLayerIndex);
     renderCanvas();
 }
@@ -334,8 +339,9 @@ function initPalette() {
         paidColorsContainer.appendChild(createColorSwatch(color, true));
     });
     
-    // 填充桌面端容器
-    if (freeColorsContainerDesktop && paidColorsContainerDesktop) {
+    // 填充桌面端容器（移动端跳过，节省 64 个 DOM 节点）
+    const isMobile = window.innerWidth < 1024 || 'ontouchstart' in window;
+    if (!isMobile && freeColorsContainerDesktop && paidColorsContainerDesktop) {
         freeColors.forEach(color => {
             freeColorsContainerDesktop.appendChild(createColorSwatch(color));
         });
@@ -970,8 +976,17 @@ function drawPixel(x, y) {
 /**
  * 获取画布坐标
  */
+// getBoundingClientRect 缓存 — 同帧内复用避免布局重排（移动端触摸每帧 60 次）
+let _cachedCanvasRect = null;
+let _cachedCanvasRectTime = 0;
+
 function getCanvasCoords(e) {
-    const rect = canvas.getBoundingClientRect();
+    const now = performance.now();
+    if (!_cachedCanvasRect || now - _cachedCanvasRectTime > 16) {  // 16ms ≈ 1 帧
+        _cachedCanvasRect = canvas.getBoundingClientRect();
+        _cachedCanvasRectTime = now;
+    }
+    const rect = _cachedCanvasRect;
     const x = Math.floor((e.clientX - rect.left) / state.zoom);
     const y = Math.floor((e.clientY - rect.top) / state.zoom);
     return { x, y };
@@ -1364,6 +1379,7 @@ function clearCanvas() {
         const activeData = getActiveData();
         if (activeData) {
             activeData.fill(0);
+            state._hasContent = false;
         }
         _invalidateLayerCache(state.activeLayerIndex);
         renderCanvas();
@@ -2267,7 +2283,8 @@ function handleTouchMove(e) {
         
         // 应用缩放
         const oldZoom = state.zoom;
-        state.zoom = Math.max(1, Math.min(80, Math.round(state.pinchStartZoom * scale)));
+        // 保留一位小数平滑缩放，避免 Math.round 导致的跳跃感
+        state.zoom = Math.max(1, Math.min(80, Math.round(state.pinchStartZoom * scale * 10) / 10));
         
         // 计算中心点移动距离（相对于初始位置）
         const startMouseX = state.pinchStartCenterX - viewportRect.left;
@@ -2442,19 +2459,7 @@ function updateBrushSizeDisplay() {
  * 检查画布是否有内容（非空像素）
  */
 function hasCanvasContent() {
-    if (!state.layers || state.layers.length === 0) return false;
-
-    const w = state.canvasWidth;
-    for (const layer of state.layers) {
-        for (let y = 0; y < state.canvasHeight; y++) {
-            for (let x = 0; x < state.canvasWidth; x++) {
-                if (_isOpaque(_getPixel(layer.data, w, x, y))) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
+    return state._hasContent;
 }
 
 /**
@@ -2896,6 +2901,7 @@ function importImageToLayer(img) {
         }
     }
 
+    if (importedCount > 0) state._hasContent = true;
     _invalidateLayerCache(state.activeLayerIndex);
     renderCanvas();
     renderLayerList();
