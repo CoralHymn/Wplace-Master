@@ -124,6 +124,20 @@ document.addEventListener('DOMContentLoaded', () => {
     let tooltipThrottleTimer = null;
     const TOOLTIP_THROTTLE_DELAY = 16; // 约60fps
 
+    // getBoundingClientRect 缓存 (同帧复用，避免强制布局重排)
+    let _cachedViewportRect = null, _cachedViewportRectTime = 0;
+    let _cachedPreviewRect = null, _cachedPreviewRectTime = 0;
+    function _getViewportRect() {
+        const now = performance.now();
+        if (!_cachedViewportRect || now - _cachedViewportRectTime > 16) { _cachedViewportRect = viewport.getBoundingClientRect(); _cachedViewportRectTime = now; }
+        return _cachedViewportRect;
+    }
+    function _getPreviewRect() {
+        const now = performance.now();
+        if (!_cachedPreviewRect || now - _cachedPreviewRectTime > 16) { _cachedPreviewRect = previewCanvas.getBoundingClientRect(); _cachedPreviewRectTime = now; }
+        return _cachedPreviewRect;
+    }
+
     // ==================== Web Worker 抖动加速 ====================
 
     const WORKER_CODE = `
@@ -931,34 +945,23 @@ self.onmessage = function(e) {
     }
 
     function toggleSelectAll(type) {
-        const t = TRANSLATIONS[currentLanguage];
-        if (type === 'free') {
-            const allSelected = state.selectedFreeColors.size === state.freeColors.length;
-            if (allSelected) {
-                state.selectedFreeColors.clear();
-                freeSelectAllBtn.textContent = t.selectAll;
-            } else {
-                state.freeColors.forEach(color => {
-                    const colorKey = JSON.stringify(color);
-                    state.selectedFreeColors.add(colorKey);
-                });
-                freeSelectAllBtn.textContent = t.deselectAll;
-            }
-            renderPaletteGrid('free');
-        } else {
-            const allSelected = state.selectedPaidColors.size === state.paidColors.length;
-            if (allSelected) {
-                state.selectedPaidColors.clear();
-                paidSelectAllBtn.textContent = t.selectAll;
-            } else {
-                state.paidColors.forEach(color => {
-                    const colorKey = JSON.stringify(color);
-                    state.selectedPaidColors.add(colorKey);
-                });
-                paidSelectAllBtn.textContent = t.deselectAll;
-            }
-            renderPaletteGrid('paid');
+        const grid = type === 'free' ? freePaletteGrid : paidPaletteGrid;
+        const selectedSet = type === 'free' ? state.selectedFreeColors : state.selectedPaidColors;
+        const colors = type === 'free' ? state.freeColors : state.paidColors;
+        const allSelected = selectedSet.size === colors.length;
+
+        if (allSelected) { selectedSet.clear(); }
+        else { colors.forEach(color => { selectedSet.add(JSON.stringify(color)); }); }
+
+        // 直接切换现有 DOM 节点的类，避免 innerHTML 全量重建 134 个节点
+        const shouldDeselect = allSelected;
+        for (let i = 0; i < grid.children.length; i++) {
+            const swatch = grid.children[i];
+            if (shouldDeselect) swatch.classList.add('deselected');
+            else swatch.classList.remove('deselected');
         }
+
+        updateSelectAllButton(type);
         updateActivePalette();
         smartUpdatePreview();
     }
@@ -1516,11 +1519,12 @@ self.onmessage = function(e) {
         const newWidth = Math.round(state.originalWidth * state.imageSize);
         const newHeight = Math.round(state.originalHeight * state.imageSize);
 
-        // 使用离屏 canvas 渲染源图，避免 Worker 处理期间原图闪现到预览区
-        const sourceCanvas = document.createElement('canvas');
+        // 复用离屏 canvas（避免每次预览更新分配新 canvas 导致 GC 压力）
+        if (!state._sourceCanvas) { state._sourceCanvas = document.createElement('canvas'); state._sourceCtx = state._sourceCanvas.getContext('2d'); }
+        const sourceCanvas = state._sourceCanvas;
         sourceCanvas.width = newWidth;
         sourceCanvas.height = newHeight;
-        const sourceCtx = sourceCanvas.getContext('2d');
+        const sourceCtx = state._sourceCtx;
 
         // 应用图片处理（亮度、对比度、饱和度、锐化、色相、色温）
         let sourceImageData;
@@ -1528,10 +1532,11 @@ self.onmessage = function(e) {
             // 先调整原始图片
             const adjustedImageData = applyImageAdjustments(state.inputImage);
             // 将调整后的数据绘制到离屏canvas并缩放
-            const tempCanvas = document.createElement('canvas');
+            if (!state._tempCanvas) { state._tempCanvas = document.createElement('canvas'); state._tempCtx = state._tempCanvas.getContext('2d'); }
+            const tempCanvas = state._tempCanvas;
             tempCanvas.width = state.inputImage.width;
             tempCanvas.height = state.inputImage.height;
-            const tempCtx = tempCanvas.getContext('2d');
+            const tempCtx = state._tempCtx;
             tempCtx.putImageData(adjustedImageData, 0, 0);
 
             sourceCtx.drawImage(tempCanvas, 0, 0, newWidth, newHeight);
@@ -1782,7 +1787,7 @@ self.onmessage = function(e) {
         state.zoom *= (e.deltaY < 0 ? zoomFactor : 1 / zoomFactor);
         state.zoom = Math.max(0.2, Math.min(5, state.zoom));
 
-        const rect = viewport.getBoundingClientRect();
+        const rect = _getViewportRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
@@ -1827,7 +1832,7 @@ self.onmessage = function(e) {
 
     function centerImage() {
         if (previewCanvas) {
-            const viewportRect = viewport.getBoundingClientRect();
+            const viewportRect = _getViewportRect();
             const canvasWidth = previewCanvas.width * state.zoom;
             const canvasHeight = previewCanvas.height * state.zoom;
 
@@ -2029,7 +2034,7 @@ self.onmessage = function(e) {
         if (tooltipThrottleTimer) return;
 
         tooltipThrottleTimer = setTimeout(() => {
-            const rect = previewCanvas.getBoundingClientRect();
+            const rect = _getPreviewRect();
             const scaleX = previewCanvas.width / rect.width;
             const scaleY = previewCanvas.height / rect.height;
 
@@ -2067,7 +2072,7 @@ self.onmessage = function(e) {
         e.preventDefault();
         e.stopPropagation();
 
-        const rect = previewCanvas.getBoundingClientRect();
+        const rect = _getPreviewRect();
         const scaleX = previewCanvas.width / rect.width;
         const scaleY = previewCanvas.height / rect.height;
 
@@ -2663,7 +2668,7 @@ self.onmessage = function(e) {
             const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
             const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
 
-            const rect = viewport.getBoundingClientRect();
+            const rect = _getViewportRect();
             const mouseX = centerX - rect.left;
             const mouseY = centerY - rect.top;
 
