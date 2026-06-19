@@ -90,7 +90,7 @@ const state = {
     redoStack: [],
     _undoRecording: null,       // [{layerIndex,x,y,oldVal}] | null=不在记录
     _undoMemoryUsed: 0,         // 所有快照占用的估算内存(字节)
-    _undoMemoryLimit: 67108864, // 64MB 默认，init 时按设备调整
+    _undoMemoryLimit: 268435456, // 256MB 默认，init 时按设备调整
     isDrawing: false,
     lastX: null,
     lastY: null,
@@ -140,7 +140,10 @@ const canvasViewport = document.getElementById('canvas-viewport');
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
     const isMobile = window.innerWidth < 1024 || 'ontouchstart' in window;
-    state._undoMemoryLimit = isMobile ? 32 * 1024 * 1024 : 96 * 1024 * 1024;  // 32MB / 96MB
+    // 现代移动端 8GB+ RAM，浏览器 Tab 约 1GB；桌面端 16GB+，Tab 约 2-4GB
+    // 撤销池取 Tab 预算的 ~25%：移动 256MB / 桌面 512MB
+    // 稀疏快照 ~2KB/次，这些值只有在超大操作(floodFill 等回退全量快照)堆积时才有意义
+    state._undoMemoryLimit = isMobile ? 256 * 1024 * 1024 : 512 * 1024 * 1024;
     _initColorLUT();
     initPalette();
     checkForImportedImage();
