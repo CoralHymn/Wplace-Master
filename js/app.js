@@ -1060,15 +1060,14 @@ self.onmessage = function(e) {
      * @param {number} brightness - 亮度百分比 (0-200)
      */
     function adjustBrightness(imageData, brightness) {
+        if (brightness === 100) return imageData;  // 恒等变换，跳过 8.3M 像素遍历
         const data = imageData.data;
         const factor = brightness / 100;
-        
         for (let i = 0; i < data.length; i += 4) {
-            data[i] = Math.min(255, Math.max(0, data[i] * factor));     // R
-            data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor)); // G
-            data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor)); // B
+            data[i] = Math.min(255, Math.max(0, data[i] * factor));
+            data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
+            data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
         }
-        
         return imageData;
     }
 
@@ -1078,17 +1077,14 @@ self.onmessage = function(e) {
      * @param {number} contrast - 对比度百分比 (0-200)
      */
     function adjustContrast(imageData, contrast) {
+        if (contrast === 100) return imageData;
         const data = imageData.data;
-        // 将百分比转换为对比度因子：100% -> 1.0, 0% -> 0.0, 200% -> 2.0
         const factor = contrast / 100;
-        
         for (let i = 0; i < data.length; i += 4) {
-            // 使用线性对比度调整：以128为中心点
-            data[i] = Math.min(255, Math.max(0, 128 + (data[i] - 128) * factor));     // R
-            data[i + 1] = Math.min(255, Math.max(0, 128 + (data[i + 1] - 128) * factor)); // G
-            data[i + 2] = Math.min(255, Math.max(0, 128 + (data[i + 2] - 128) * factor)); // B
+            data[i] = Math.min(255, Math.max(0, 128 + (data[i] - 128) * factor));
+            data[i + 1] = Math.min(255, Math.max(0, 128 + (data[i + 1] - 128) * factor));
+            data[i + 2] = Math.min(255, Math.max(0, 128 + (data[i + 2] - 128) * factor));
         }
-        
         return imageData;
     }
 
@@ -1098,23 +1094,16 @@ self.onmessage = function(e) {
      * @param {number} saturation - 饱和度百分比 (0-200)
      */
     function adjustSaturation(imageData, saturation) {
+        if (saturation === 100) return imageData;
         const data = imageData.data;
         const factor = saturation / 100;
-        
         for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            
-            // 计算灰度值
+            const r = data[i], g = data[i + 1], b = data[i + 2];
             const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
-            
-            // 应用饱和度调整
-            data[i] = Math.min(255, Math.max(0, gray + (r - gray) * factor));     // R
-            data[i + 1] = Math.min(255, Math.max(0, gray + (g - gray) * factor)); // G
-            data[i + 2] = Math.min(255, Math.max(0, gray + (b - gray) * factor)); // B
+            data[i] = Math.min(255, Math.max(0, gray + (r - gray) * factor));
+            data[i + 1] = Math.min(255, Math.max(0, gray + (g - gray) * factor));
+            data[i + 2] = Math.min(255, Math.max(0, gray + (b - gray) * factor));
         }
-        
         return imageData;
     }
 
@@ -1240,11 +1229,11 @@ self.onmessage = function(e) {
      * @returns {ImageData} 处理后的图像数据
      */
     function applyImageAdjustments(img) {
-        // 创建临时canvas
-        const tempCanvas = document.createElement('canvas');
+        if (!state._adjCanvas) { state._adjCanvas = document.createElement('canvas'); state._adjCtx = state._adjCanvas.getContext('2d'); }
+        const tempCanvas = state._adjCanvas;
         tempCanvas.width = img.width;
         tempCanvas.height = img.height;
-        const tempCtx = tempCanvas.getContext('2d');
+        const tempCtx = state._adjCtx;
         
         // 绘制原始图片
         tempCtx.drawImage(img, 0, 0);
