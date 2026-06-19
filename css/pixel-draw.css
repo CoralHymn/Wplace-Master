@@ -350,7 +350,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    display: flex;
+    display: grid;
     align-items: center;
     justify-content: center;
     /* 启用硬件加速 */
@@ -359,6 +359,7 @@ body {
 }
 
 #pixel-canvas {
+    grid-area: 1 / 1;
     image-rendering: pixelated;
     image-rendering: -moz-crisp-edges;
     image-rendering: crisp-edges;
@@ -366,6 +367,16 @@ body {
     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     background: #fff;
     /* 启用硬件加速，使transform更流畅 */
+    will-change: transform;
+    transform-origin: 0 0;
+}
+
+#preview-canvas {
+    grid-area: 1 / 1;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    pointer-events: none;
     will-change: transform;
     transform-origin: 0 0;
 }

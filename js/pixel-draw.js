@@ -109,6 +109,7 @@ const state = {
     // 形状预览（优化后不修改图层数据，仅叠加预览）
     shapePreviewEndX: null,
     shapePreviewEndY: null,
+    _previewLastRect: null,  // 上一帧预览包围盒，用于增量清除
     // 用于优化性能
     needsRender: false,
     rafId: null,
@@ -122,6 +123,8 @@ const state = {
 // DOM元素
 const canvas = document.getElementById('pixel-canvas');
 const ctx = canvas.getContext('2d');
+const previewCanvas = document.getElementById('preview-canvas');
+const previewCtx = previewCanvas.getContext('2d');
 const canvasViewport = document.getElementById('canvas-viewport');
 
 // 初始化
@@ -172,9 +175,16 @@ function setCanvasSize(width, height) {
 
     canvas.width = width;
     canvas.height = height;
+    previewCanvas.width = width;
+    previewCanvas.height = height;
 
-    // 重置图层缓存
+    // 预创建图层缓存——避免首次渲染时 _rebuildLayerCanvas 因缺少
+    // 离屏 canvas 而降级为全量重建（4K 下遍历 8.3M 像素阻塞数百毫秒）
     state._layerCanvasCache = [];
+    const initCache = document.createElement('canvas');
+    initCache.width = width;
+    initCache.height = height;
+    state._layerCanvasCache[0] = initCache;
     state._layerCanvasDirty = [true];
     state._dirtyRects = [null];
 
@@ -403,6 +413,8 @@ function updateCanvasTransform() {
     // canvas 保持原始尺寸，使用 transform 进行缩放和平移
     canvas.style.transform = `translate(${state.panOffsetX}px, ${state.panOffsetY}px) scale(${state.zoom})`;
     canvas.style.transformOrigin = '0 0';
+    previewCanvas.style.transform = canvas.style.transform;
+    previewCanvas.style.transformOrigin = '0 0';
 }
 
 /**
@@ -523,13 +535,14 @@ function _markDirtyRect(layerIndex, x1, y1, x2, y2) {
     }
 
     let rects = state._dirtyRects[layerIndex];
-    if (rects === null) {
-        // 已是全脏，无需追加
+    if (rects === null || rects === undefined) {
+        // 全脏标记或新图层：用具体脏矩形替代，避免降级为全量重建
+        state._dirtyRects[layerIndex] = [[x1, y1, x2, y2]];
         return;
     }
-    if (!rects) {
-        rects = [];
-        state._dirtyRects[layerIndex] = rects;
+    if (rects.length === 0) {
+        state._dirtyRects[layerIndex] = [[x1, y1, x2, y2]];
+        return;
     }
     // 与现有矩形之一重叠或相邻则合并，否则追加
     let merged = false;
@@ -546,6 +559,145 @@ function _markDirtyRect(layerIndex, x1, y1, x2, y2) {
     }
     if (!merged) {
         rects.push([x1, y1, x2, y2]);
+    }
+}
+
+/**
+ * 在独立预览 Canvas 上绘制形状预览（不影响主画布图层合成）
+ */
+function _drawShapePreview() {
+    if (!state.isDrawing || state.shapePreviewEndX === null || state.shapePreviewEndY === null) return;
+    if (state.currentTool !== 'line' && state.currentTool !== 'rect' && state.currentTool !== 'circle') return;
+    const w = state.canvasWidth, h = state.canvasHeight;
+    if (w === 0 || h === 0) return;
+    const sx = state.startShapeX, sy = state.startShapeY;
+    const ex = state.shapePreviewEndX, ey = state.shapePreviewEndY;
+
+    // 透明色预览用灰色示意（而非跳过，否则拖拽时看不到形状轮廓）
+    const isTransparent = !state.currentColor || state.currentColor === 'transparent';
+    const rgba = isTransparent ? [128, 128, 128] : _parseColorRGBA(state.currentColor);
+    if (!rgba) return;
+
+    // 仅清除上一帧预览的包围盒区域（而非全量 4K clearRect）
+    if (state._previewLastRect) {
+        const [lx1, ly1, lx2, ly2] = state._previewLastRect;
+        const lw = lx2 - lx1 + 1, lh = ly2 - ly1 + 1;
+        if (lw > 0 && lh > 0) previewCtx.clearRect(lx1, ly1, lw, lh);
+    } else {
+        // 首帧：清除整个画布（仅一次）
+        previewCtx.clearRect(0, 0, w, h);
+    }
+
+    previewCtx.fillStyle = isTransparent
+        ? 'rgba(128,128,128,0.5)'
+        : `rgba(${rgba[0]},${rgba[1]},${rgba[2]},0.6)`;
+    if (state.currentTool === 'line') {
+        let x0 = sx, y0 = sy, x1 = ex, y1 = ey;
+        const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+        const stepX = x0 < x1 ? 1 : -1, stepY = y0 < y1 ? 1 : -1;
+        let err = dx - dy;
+        while (true) {
+            if (x0 >= 0 && x0 < w && y0 >= 0 && y0 < h) previewCtx.fillRect(x0, y0, 1, 1);
+            if (x0 === x1 && y0 === y1) break;
+            const e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x0 += stepX; }
+            if (e2 < dx) { err += dx; y0 += stepY; }
+        }
+    } else if (state.currentTool === 'rect') {
+        const minX = Math.max(0, Math.min(sx, ex)), maxX = Math.min(w - 1, Math.max(sx, ex));
+        const minY = Math.max(0, Math.min(sy, ey)), maxY = Math.min(h - 1, Math.max(sy, ey));
+        for (let x = minX; x <= maxX; x++) {
+            if (minY >= 0 && minY < h) previewCtx.fillRect(x, minY, 1, 1);
+            if (maxY >= 0 && maxY < h) previewCtx.fillRect(x, maxY, 1, 1);
+        }
+        for (let y = minY + 1; y < maxY; y++) {
+            if (minX >= 0 && minX < w) previewCtx.fillRect(minX, y, 1, 1);
+            if (maxX >= 0 && maxX < w) previewCtx.fillRect(maxX, y, 1, 1);
+        }
+    } else if (state.currentTool === 'circle') {
+        const radius = Math.max(Math.abs(ex - sx), Math.abs(ey - sy));
+        const cx = sx, cy = sy;
+        let rx = radius, ry = 0, p = 1 - radius;
+        const drawCirclePixels = (px, py) => {
+            const pts = [[px, py], [-px, py], [px, -py], [-px, -py], [py, px], [-py, px], [py, -px], [-py, -px]];
+            for (const [dx, dy] of pts) {
+                const nx = cx + dx, ny = cy + dy;
+                if (nx >= 0 && nx < w && ny >= 0 && ny < h) previewCtx.fillRect(nx, ny, 1, 1);
+            }
+        };
+        while (rx >= ry) { drawCirclePixels(rx, ry); ry++; if (p <= 0) p = p + 2 * ry + 1; else { rx--; p = p + 2 * ry - 2 * rx + 1; } }
+    }
+    // 保存当前帧预览包围盒（含 1px 外扩容错），供下一帧增量清除
+    if (state.currentTool === 'circle') {
+        const r = Math.max(Math.abs(ex - sx), Math.abs(ey - sy));
+        state._previewLastRect = [sx - r - 1, sy - r - 1, sx + r + 1, sy + r + 1];
+    } else {
+        state._previewLastRect = [Math.min(sx, ex) - 1, Math.min(sy, ey) - 1, Math.max(sx, ex) + 1, Math.max(sy, ey) + 1];
+    }
+}
+
+function _clearShapePreview() {
+    if (state._previewLastRect) {
+        const [lx1, ly1, lx2, ly2] = state._previewLastRect;
+        const lw = lx2 - lx1 + 1, lh = ly2 - ly1 + 1;
+        if (lw > 0 && lh > 0) previewCtx.clearRect(lx1, ly1, lw, lh);
+        state._previewLastRect = null;
+    } else if (state.canvasWidth > 0 && state.canvasHeight > 0) {
+        previewCtx.clearRect(0, 0, state.canvasWidth, state.canvasHeight);
+    }
+}
+
+/**
+ * 直接在离屏缓存 Canvas 上绘制形状（绕过 _rebuildLayerCanvas 的 O(W×H) 遍历）。
+ * 仅在 drawRect/drawCircle/drawLine 已将形状写入 Uint32Array 后调用。
+ */
+function _drawShapeToCache(layerIndex, sx, sy, ex, ey) {
+    const oc = state._layerCanvasCache[layerIndex];
+    if (!oc) return;
+    const octx = oc.getContext('2d');
+    const isTransparent = !state.currentColor || state.currentColor === 'transparent';
+    const uint32Color = _colorToUint32(state.currentColor) >>> 0;
+    const r = uint32Color & 0xFF, g = (uint32Color >> 8) & 0xFF, b = (uint32Color >> 16) & 0xFF;
+    octx.fillStyle = `rgb(${r},${g},${b})`;
+    const w = state.canvasWidth, h = state.canvasHeight;
+    // 透明色用 clearRect 擦除而非 fillRect 画黑色
+    const drawDot = isTransparent
+        ? (x, y) => { octx.clearRect(x, y, 1, 1); }
+        : (x, y) => { octx.fillRect(x, y, 1, 1); };
+
+    if (state.currentTool === 'line') {
+        let x0 = sx, y0 = sy, x1 = ex, y1 = ey;
+        const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+        const stepX = x0 < x1 ? 1 : -1, stepY = y0 < y1 ? 1 : -1;
+        let err = dx - dy;
+        while (true) {
+            if (x0 >= 0 && x0 < w && y0 >= 0 && y0 < h) drawDot(x0, y0);
+            if (x0 === x1 && y0 === y1) break;
+            const e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x0 += stepX; }
+            if (e2 < dx) { err += dx; y0 += stepY; }
+        }
+    } else if (state.currentTool === 'rect') {
+        const minX = Math.max(0, Math.min(sx, ex)), maxX = Math.min(w - 1, Math.max(sx, ex));
+        const minY = Math.max(0, Math.min(sy, ey)), maxY = Math.min(h - 1, Math.max(sy, ey));
+        for (let x = minX; x <= maxX; x++) {
+            drawDot(x, minY); drawDot(x, maxY);
+        }
+        for (let y = minY + 1; y < maxY; y++) {
+            drawDot(minX, y); drawDot(maxX, y);
+        }
+    } else if (state.currentTool === 'circle') {
+        const radius = Math.max(Math.abs(ex - sx), Math.abs(ey - sy));
+        const cx = sx, cy = sy;
+        let rx = radius, ry = 0, p = 1 - radius;
+        const drawPx = (px, py) => {
+            const pts = [[px, py], [-px, py], [px, -py], [-px, -py], [py, px], [-py, px], [py, -px], [-py, -px]];
+            for (const [dx, dy] of pts) {
+                const nx = cx + dx, ny = cy + dy;
+                if (nx >= 0 && nx < w && ny >= 0 && ny < h) drawDot(nx, ny);
+            }
+        };
+        while (rx >= ry) { drawPx(rx, ry); ry++; if (p <= 0) p = p + 2 * ry + 1; else { rx--; p = p + 2 * ry - 2 * rx + 1; } }
     }
 }
 
@@ -743,36 +895,8 @@ function renderCanvas() {
         ctx.globalAlpha = 1.0;
     }
 
-    // 3.5. 形状预览（在图层合成结果之上绘制预览形状，不修改数据）
-    if (state.isDrawing && state.shapePreviewEndX !== null && state.shapePreviewEndY !== null &&
-        (state.currentTool === 'line' || state.currentTool === 'rect' || state.currentTool === 'circle')) {
-        const sx = state.startShapeX;
-        const sy = state.startShapeY;
-        const ex = state.shapePreviewEndX;
-        const ey = state.shapePreviewEndY;
-        const rgba = state.currentColor ? _parseColorRGBA(state.currentColor) : null;
-        if (rgba) {
-            ctx.strokeStyle = `rgba(${rgba[0]},${rgba[1]},${rgba[2]},0.6)`;
-            ctx.lineWidth = 1;
-            if (state.currentTool === 'line') {
-                ctx.beginPath();
-                ctx.moveTo(sx + 0.5, sy + 0.5);
-                ctx.lineTo(ex + 0.5, ey + 0.5);
-                ctx.stroke();
-            } else if (state.currentTool === 'rect') {
-                const minX = Math.min(sx, ex);
-                const maxX = Math.max(sx, ex);
-                const minY = Math.min(sy, ey);
-                const maxY = Math.max(sy, ey);
-                ctx.strokeRect(minX + 0.5, minY + 0.5, maxX - minX, maxY - minY);
-            } else if (state.currentTool === 'circle') {
-                const radius = Math.max(Math.abs(ex - sx), Math.abs(ey - sy));
-                ctx.beginPath();
-                ctx.arc(sx + 0.5, sy + 0.5, radius, 0, 2 * Math.PI);
-                ctx.stroke();
-            }
-        }
-    }
+    // 3.5. 形状预览 — 绘制到独立预览 canvas（不影响图层合成，不清主画布）
+    _drawShapePreview();
 
     // 4. 网格
     if (state.showGrid && state.zoom >= 8) {
@@ -1650,6 +1774,7 @@ function setCanvasBgColor(color) {
     });
 }
 
+
 function handleMouseDown(e) {
     // 右键拖拽画布
     if (e.button === 2) {
@@ -1748,7 +1873,7 @@ function handleMouseDown(e) {
         state.startShapeY = y;
         state.shapePreviewEndX = x;
         state.shapePreviewEndY = y;
-        saveState();
+        // 不在此处 saveState——推迟到 mouseUp，省掉 mousemove 期间的恢复开销
         return;
     }
 
@@ -1797,14 +1922,13 @@ function handleMouseMove(e) {
         state.lastY = y;
         renderCanvas();
     } else if (state.currentTool === 'line') {
-        // 直线工具：只记录终点用于预览，不修改图层数据
         state.shapePreviewEndX = x;
         state.shapePreviewEndY = y;
-        scheduleRender();
+        _drawShapePreview();  // 仅更新独立预览 canvas，不触发主画布全量合成
     } else if (state.currentTool === 'rect' || state.currentTool === 'circle') {
         state.shapePreviewEndX = x;
         state.shapePreviewEndY = y;
-        scheduleRender();
+        _drawShapePreview();
     }
 }
 
@@ -1836,13 +1960,22 @@ function handleMouseUp(e) {
         return;
     }
 
-    // 形状工具结束：将最终形状应用到图层数据
+    // 形状工具结束：清除预览，将形状同时写入图层数据和离屏缓存
     if (state.isDrawing && (state.currentTool === 'line' || state.currentTool === 'rect' || state.currentTool === 'circle')) {
-        restoreFromUndoSnapshot();
         const sx = state.startShapeX;
         const sy = state.startShapeY;
         const ex = state.shapePreviewEndX;
         const ey = state.shapePreviewEndY;
+        state.isDrawing = false;
+        state.startShapeX = null;
+        state.startShapeY = null;
+        state.shapePreviewEndX = null;
+        state.shapePreviewEndY = null;
+
+        _clearShapePreview();
+        saveState();
+
+        // 写入 Uint32Array 图层数据
         if (state.currentTool === 'line') {
             drawLine(sx, sy, ex, ey, state.currentColor);
         } else if (state.currentTool === 'rect') {
@@ -1851,14 +1984,16 @@ function handleMouseUp(e) {
             const radius = Math.max(Math.abs(ex - sx), Math.abs(ey - sy));
             drawCircle(sx, sy, radius, state.currentColor);
         }
-        renderCanvas();
+
+        // 直接在离屏缓存 canvas 上绘制相同形状（O(shape) 而非 O(W×H)）
+        _drawShapeToCache(state.activeLayerIndex, sx, sy, ex, ey);
+        state._layerCanvasDirty[state.activeLayerIndex] = false;
+        state._dirtyRects[state.activeLayerIndex] = [];
+
+        renderCanvas();  // 仅合成，不触发 _rebuildLayerCanvas
     }
 
     state.isDrawing = false;
-    state.startShapeX = null;
-    state.startShapeY = null;
-    state.shapePreviewEndX = null;
-    state.shapePreviewEndY = null;
 }
 
 function handleContainerMouseDown(e) {
@@ -1998,7 +2133,7 @@ function handleTouchStart(e) {
             state.startShapeY = y;
             state.shapePreviewEndX = x;
             state.shapePreviewEndY = y;
-            saveState();
+            // 不在此处 saveState——推迟到 touchEnd
             return;
         }
 
@@ -2085,10 +2220,9 @@ function handleTouchMove(e) {
         const { x, y } = getCanvasCoords(touch);
         
         if (state.currentTool === 'line' || state.currentTool === 'rect' || state.currentTool === 'circle') {
-            // 形状工具：只更新预览终点，不修改图层数据
             state.shapePreviewEndX = x;
             state.shapePreviewEndY = y;
-            scheduleRender();
+            _drawShapePreview();  // 仅更新独立预览 canvas
         } else if (state.currentTool === 'pencil' || state.currentTool === 'eraser') {
             drawLine(state.lastX, state.lastY, x, y, state.currentTool === 'eraser' ? null : state.currentColor);
             state.lastX = x;
@@ -2111,13 +2245,20 @@ function handleTouchEnd() {
         return;
     }
     
-    // 形状工具结束：将最终形状应用到图层数据
+    // 形状工具结束：清除预览，将形状同时写入图层数据和离屏缓存
     if (state.isDrawing && (state.currentTool === 'line' || state.currentTool === 'rect' || state.currentTool === 'circle')) {
-        restoreFromUndoSnapshot();
         const sx = state.startShapeX;
         const sy = state.startShapeY;
         const ex = state.shapePreviewEndX;
         const ey = state.shapePreviewEndY;
+        state.isDrawing = false;
+        state.startShapeX = null;
+        state.startShapeY = null;
+        state.shapePreviewEndX = null;
+        state.shapePreviewEndY = null;
+
+        _clearShapePreview();
+        saveState();
         if (state.currentTool === 'line') {
             drawLine(sx, sy, ex, ey, state.currentColor);
         } else if (state.currentTool === 'rect') {
@@ -2126,6 +2267,9 @@ function handleTouchEnd() {
             const radius = Math.max(Math.abs(ex - sx), Math.abs(ey - sy));
             drawCircle(sx, sy, radius, state.currentColor);
         }
+        _drawShapeToCache(state.activeLayerIndex, sx, sy, ex, ey);
+        state._layerCanvasDirty[state.activeLayerIndex] = false;
+        state._dirtyRects[state.activeLayerIndex] = [];
         renderCanvas();
     }
 
