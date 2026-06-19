@@ -1773,23 +1773,27 @@ self.onmessage = function(e) {
 
     function handleWheelZoom(e) {
         e.preventDefault();
-        const zoomFactor = 1.1;
-        const oldZoom = state.zoom;
-
+        var zoomFactor = 1.1;
+        var oldZoom = state.zoom;
         state.zoom *= (e.deltaY < 0 ? zoomFactor : 1 / zoomFactor);
         state.zoom = Math.max(0.2, Math.min(5, state.zoom));
 
-        const rect = _getViewportRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        // pixel-draw 同款：canvas 视觉 rect (will-change: transform → 含 translate)
+        var rect = _getPreviewRect();
+        var mx = e.clientX - rect.left;
+        var my = e.clientY - rect.top;
+        state.panX -= mx * (state.zoom / oldZoom - 1);
+        state.panY -= my * (state.zoom / oldZoom - 1);
 
-        state.panX = mouseX - (mouseX - state.panX) * (state.zoom / oldZoom);
-        state.panY = mouseY - (mouseY - state.panY) * (state.zoom / oldZoom);
+        previewCanvas.style.transition = 'none';
+        updateTransform();
+        void previewCanvas.offsetWidth;
+        previewCanvas.style.transition = '';
+        _cachedPreviewRectTime = 0;
 
         zoomSlider.value = Math.round(state.zoom * 100);
-        const zoomValueEl = document.getElementById('zoom-value');
-        if (zoomValueEl) zoomValueEl.textContent = `${zoomSlider.value}%`;
-        updateTransform();
+        var zel = document.getElementById('zoom-value');
+        if (zel) zel.textContent = zoomSlider.value + '%';
     }
 
     function handlePanStart(e) {
@@ -1823,18 +1827,11 @@ self.onmessage = function(e) {
     }
 
     function centerImage() {
-        if (previewCanvas) {
-            const viewportRect = _getViewportRect();
-            const canvasWidth = previewCanvas.width * state.zoom;
-            const canvasHeight = previewCanvas.height * state.zoom;
-
-            state.panX = (viewportRect.width - canvasWidth) / 2;
-            state.panY = (viewportRect.height - canvasHeight) / 2;
-        } else {
-            state.panX = 0;
-            state.panY = 0;
-        }
+        // transform-origin: 0 0 → 画布从布局原点(top-left)缩放，需补偿偏移保持视觉居中
+        state.panX = previewCanvas.width / 2 * (1 - state.zoom);
+        state.panY = previewCanvas.height / 2 * (1 - state.zoom);
         updateTransform();
+        _cachedPreviewRectTime = 0;
     }
 
     function resetPanAndZoom() {
@@ -2643,34 +2640,28 @@ self.onmessage = function(e) {
 
             updateTransform();
         } else if (e.touches.length === 2 && touchState.isPinching) {
-            // 双指缩放
-            const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
-            const oldZoom = state.zoom;
-
-            // 计算缩放比例
-            const scaleFactor = currentDistance / touchState.lastDistance;
-            state.zoom *= scaleFactor;
+            var currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
+            var oldZoom = state.zoom;
+            state.zoom *= currentDistance / touchState.lastDistance;
             state.zoom = Math.max(0.2, Math.min(5, state.zoom));
 
-            // 计算双指中心点
-            const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-            const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-
-            const rect = _getViewportRect();
-            const mouseX = centerX - rect.left;
-            const mouseY = centerY - rect.top;
-
-            // 调整平移以保持缩放中心点
-            state.panX = mouseX - (mouseX - state.panX) * (state.zoom / oldZoom);
-            state.panY = mouseY - (mouseY - state.panY) * (state.zoom / oldZoom);
-
-            // 更新缩放滑块
-            zoomSlider.value = Math.round(state.zoom * 100);
-            const zoomValueEl = document.getElementById('zoom-value');
-            if (zoomValueEl) zoomValueEl.textContent = `${Math.round(state.zoom * 100)}%`;
-
-            touchState.lastDistance = currentDistance;
+            var centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            var centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            var rect = _getPreviewRect();
+            var mx = centerX - rect.left;
+            var my = centerY - rect.top;
+            state.panX -= mx * (state.zoom / oldZoom - 1);
+            state.panY -= my * (state.zoom / oldZoom - 1);
+            previewCanvas.style.transition = 'none';
             updateTransform();
+            void previewCanvas.offsetWidth;
+            previewCanvas.style.transition = '';
+            _cachedPreviewRectTime = 0;
+
+            zoomSlider.value = Math.round(state.zoom * 100);
+            var zoomValueEl = document.getElementById('zoom-value');
+            if (zoomValueEl) zoomValueEl.textContent = Math.round(state.zoom * 100) + '%';
+            touchState.lastDistance = currentDistance;
         }
     }
 
