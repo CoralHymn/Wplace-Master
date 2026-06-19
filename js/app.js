@@ -2780,6 +2780,7 @@ self.onmessage = function(e) {
         let isResizing = false;
         let startY = 0;
         let startHeight = 0;
+        let _resizeRafPending = false;
 
         function handleResizeStart(e) {
             e.preventDefault();
@@ -2799,11 +2800,13 @@ self.onmessage = function(e) {
 
             previewPanel.style.flex = `0 0 ${newHeight}px`;
 
-            // 更新缩放和居中
-            if (state.inputImage) {
-                setTimeout(() => {
+            // rAF 节流居中——避免每次 touchmove 都 setTimeout 堆积事件队列
+            if (state.inputImage && !_resizeRafPending) {
+                _resizeRafPending = true;
+                requestAnimationFrame(() => {
                     centerImage();
-                }, 10);
+                    _resizeRafPending = false;
+                });
             }
         }
 
