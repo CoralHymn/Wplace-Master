@@ -1502,18 +1502,12 @@ self.onmessage = function(e) {
         return newImageData;
     }
 
-    let _perfLogSeq = 0;
-
     async function updatePreview() {
-        const seq = ++_perfLogSeq;
-        const tag = '[preview#' + seq + ']';
-        console.time(tag + ' total');
         if (!state.inputImage || !state.activePalette || state.activePalette.length === 0) {
-            updateColorStats(null); console.timeEnd(tag + ' total'); return;
+            updateColorStats(null); return;
         }
         const newWidth = Math.round(state.originalWidth * state.imageSize);
         const newHeight = Math.round(state.originalHeight * state.imageSize);
-        console.log(tag + ' size=' + newWidth + 'x' + newHeight + ' algo=' + state.activeAlgorithm + ' worker=' + !!ditherWorker + ' adj=' + (state.brightness !== 100 || state.contrast !== 100 || state.temperature !== 0));
 
         // 复用离屏 canvas（避免每次预览更新分配新 canvas 导致 GC 压力）
         if (!state._sourceCanvas) { state._sourceCanvas = document.createElement('canvas'); state._sourceCtx = state._sourceCanvas.getContext('2d', { willReadFrequently: true }); }
@@ -1522,12 +1516,9 @@ self.onmessage = function(e) {
         sourceCanvas.height = newHeight;
         const sourceCtx = state._sourceCtx;
 
-        console.time(tag + ' src');
         let sourceImageData;
         if (state.brightness !== 100 || state.contrast !== 100 || state.saturation !== 100 || state.sharpness !== 0 || state.hue !== 0 || state.temperature !== 0) {
-            console.time(tag + '   adj');
             const adjustedImageData = applyImageAdjustments(state.inputImage);
-            console.timeEnd(tag + '   adj');
             if (!state._tempCanvas) { state._tempCanvas = document.createElement('canvas'); state._tempCtx = state._tempCanvas.getContext('2d', { willReadFrequently: true }); }
             const tempCanvas = state._tempCanvas; tempCanvas.width = state.inputImage.width; tempCanvas.height = state.inputImage.height; const tempCtx = state._tempCtx;
             tempCtx.putImageData(adjustedImageData, 0, 0);
@@ -1537,36 +1528,30 @@ self.onmessage = function(e) {
             sourceCtx.drawImage(state.inputImage, 0, 0, newWidth, newHeight);
             sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight);
         }
-        console.timeEnd(tag + ' src');
 
         const algo = ALGORITHMS[state.activeAlgorithm];
         let processedImageData;
 
-        console.time(tag + ' dither');
         if (algo.type === 'error') {
             if (ditherWorker) {
-                try { console.time(tag + '   wk'); processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, algo.kernel, null); console.timeEnd(tag + '   wk'); }
-                catch (e) { sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight); console.time(tag + '   sync'); processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked); console.timeEnd(tag + '   sync'); }
-            } else { console.time(tag + '   sync'); processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked); console.timeEnd(tag + '   sync'); }
+                try { processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, algo.kernel, null); }
+                catch (e) { sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight); processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked); }
+            } else { processedImageData = applyErrorDither(sourceImageData, state.activePalette, state.ditherStrength, algo.kernel, state.isLocked); }
         } else if (algo.type === 'ordered') {
             if (ditherWorker) {
-                try { console.time(tag + '   wk'); processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, null, algo.matrix); console.timeEnd(tag + '   wk'); }
-                catch (e) { sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight); console.time(tag + '   sync'); processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked); console.timeEnd(tag + '   sync'); }
-            } else { console.time(tag + '   sync'); processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked); console.timeEnd(tag + '   sync'); }
+                try { processedImageData = await _ditherInWorker(sourceImageData, state.activePalette, state.ditherStrength, algo, null, algo.matrix); }
+                catch (e) { sourceImageData = sourceCtx.getImageData(0, 0, newWidth, newHeight); processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked); }
+            } else { processedImageData = applyOrderedDither(sourceImageData, state.activePalette, state.ditherStrength, algo.matrix, state.isLocked); }
         }
-        console.timeEnd(tag + ' dither');
 
-        if (state.forceOpaqueEnabled) { console.time(tag + ' opaque'); processedImageData = applyForceOpaque(processedImageData, state.activePalette); console.timeEnd(tag + ' opaque'); }
-        if (state.colorReplacements.size > 0) { console.time(tag + ' replace'); processedImageData = applyColorReplacements(processedImageData); console.timeEnd(tag + ' replace'); }
+        if (state.forceOpaqueEnabled) { processedImageData = applyForceOpaque(processedImageData, state.activePalette); }
+        if (state.colorReplacements.size > 0) { processedImageData = applyColorReplacements(processedImageData); }
 
         state.processedImageData = processedImageData;
 
-        console.time(tag + ' paint');
         previewCanvas.width = processedImageData.width; previewCanvas.height = processedImageData.height;
         previewCtx.putImageData(processedImageData, 0, 0); updateTransform();
-        console.timeEnd(tag + ' paint');
-        console.time(tag + ' stats'); updateColorStats(processedImageData); console.timeEnd(tag + ' stats');
-        console.timeEnd(tag + ' total');
+        updateColorStats(processedImageData);
     }
 
     /**
@@ -1579,20 +1564,17 @@ self.onmessage = function(e) {
     function smartUpdatePreview() {
         if (!state.realtimeEnabled) return;
         if (_previewRunning) {
-            console.log('[debounce] Worker busy, pending');
             _previewPending = true;
             return;
         }
-        if (_previewDebounceTimer) { clearTimeout(_previewDebounceTimer); console.log('[debounce] reset timer'); }
-        else console.log('[debounce] start 150ms');
+        if (_previewDebounceTimer) { clearTimeout(_previewDebounceTimer); }
         _previewDebounceTimer = setTimeout(() => {
-            console.log('[debounce] fire');
             _previewDebounceTimer = null;
             _previewRunning = true;
             _previewPending = false;
             updatePreview().finally(() => {
                 _previewRunning = false;
-                if (_previewPending) { console.log('[debounce] re-run pending'); _previewPending = false; smartUpdatePreview(); }
+                if (_previewPending) { _previewPending = false; smartUpdatePreview(); }
             });
         }, 150);
     }
