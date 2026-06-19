@@ -1587,11 +1587,31 @@ self.onmessage = function(e) {
     /**
      * 智能更新预览 - 根据实时调整开关决定是否立即更新
      */
+    let _previewDebounceTimer = null;
+    let _previewPending = false;       // 防抖期间有新请求，Worker 完成后需重跑
+    let _previewRunning = false;       // Worker 正在处理中
+
     function smartUpdatePreview() {
-        if (state.realtimeEnabled) {
-            updatePreview();
+        if (!state.realtimeEnabled) return;
+        if (_previewRunning) {
+            // Worker 正在跑，标记待重跑（完成后自动触发一次）
+            _previewPending = true;
+            return;
         }
-        // 如果实时调整关闭，则不执行任何操作，等待用户点击“生成图片”按钮
+        // 防抖：滑块拖动停止 150ms 后才真正执行
+        if (_previewDebounceTimer) clearTimeout(_previewDebounceTimer);
+        _previewDebounceTimer = setTimeout(() => {
+            _previewDebounceTimer = null;
+            _previewRunning = true;
+            _previewPending = false;
+            updatePreview().finally(() => {
+                _previewRunning = false;
+                if (_previewPending) {
+                    _previewPending = false;
+                    smartUpdatePreview();  // 重跑一次，应用最新参数
+                }
+            });
+        }, 150);
     }
 
     /**
