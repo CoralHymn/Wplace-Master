@@ -2128,24 +2128,31 @@ function handleContainerMouseUp() {
     }
 }
 
+var _canvasRectCache = null, _canvasRectCacheTime = 0;
+function _getCanvasRectCached() {
+    var now = performance.now();
+    if (!_canvasRectCache || now - _canvasRectCacheTime > 16) {
+        _canvasRectCache = canvas.getBoundingClientRect();
+        _canvasRectCacheTime = now;
+    }
+    return _canvasRectCache;
+}
+
 function handleWheel(e) {
     e.preventDefault();
-    const zoomFactor = 1.1;
-    const oldZoom = state.zoom;
-
-    // 计算新的缩放级别
+    var zoomFactor = 1.1;
+    var oldZoom = state.zoom;
     state.zoom *= (e.deltaY < 0 ? zoomFactor : 1 / zoomFactor);
     state.zoom = Math.max(1, Math.min(80, state.zoom));
 
-    // 获取视口（canvas-container）的位置 - 与 index.html 一致
-    const viewport = document.getElementById('canvas-container');
-    const rect = viewport.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
-    // 完全按照 index.html 的公式
-    state.panOffsetX = mouseX - (mouseX - state.panOffsetX) * (state.zoom / oldZoom);
-    state.panOffsetY = mouseY - (mouseY - state.panOffsetY) * (state.zoom / oldZoom);
+    var rect = _getCanvasRectCached();
+    var mx = e.clientX - rect.left;
+    var my = e.clientY - rect.top;
+    state.panOffsetX -= mx * (state.zoom / oldZoom - 1);
+    state.panOffsetY -= my * (state.zoom / oldZoom - 1);
+    // 立即应用 transform，使下一帧/下一次 wheel 事件的 canvasRect 反映新位置
+    updateCanvasTransform();
+    _canvasRectCacheTime = 0;  // 下一帧重新读 canvas 屏幕位置
 
     scheduleUpdate();
 }
@@ -2270,31 +2277,19 @@ function handleTouchMove(e) {
         const currentDistance = getTouchDistance(e.touches);
         const scale = currentDistance / state.pinchStartDistance;
         
-        // 计算新的双指中心点（相对于视口）
-        const viewport = document.getElementById('canvas-container');
-        const viewportRect = viewport.getBoundingClientRect();
-        
-        const currentCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        const currentCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        
-        // 相对于视口的位置
-        const mouseX = currentCenterX - viewportRect.left;
-        const mouseY = currentCenterY - viewportRect.top;
-        
-        // 应用缩放
-        const oldZoom = state.zoom;
-        // 保留一位小数平滑缩放，避免 Math.round 导致的跳跃感
+        var canvasRect = _getCanvasRectCached();
+        var currentCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        var currentCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        var mx = currentCenterX - canvasRect.left;
+        var my = currentCenterY - canvasRect.top;
+        var oldZoom = state.zoom;
         state.zoom = Math.max(1, Math.min(80, Math.round(state.pinchStartZoom * scale * 10) / 10));
-        
-        // 计算中心点移动距离（相对于初始位置）
-        const startMouseX = state.pinchStartCenterX - viewportRect.left;
-        const startMouseY = state.pinchStartCenterY - viewportRect.top;
-        const deltaX = mouseX - startMouseX;
-        const deltaY = mouseY - startMouseY;
-        
-        // 使用与滚轮相同的公式，但需要考虑手指移动
-        state.panOffsetX = mouseX - (mouseX - (state.pinchStartPanX + deltaX)) * (state.zoom / oldZoom);
-        state.panOffsetY = mouseY - (mouseY - (state.pinchStartPanY + deltaY)) * (state.zoom / oldZoom);
+
+        // 缩放原点补偿 + 手指位移补偿
+        state.panOffsetX -= mx * (state.zoom / oldZoom - 1);
+        state.panOffsetY -= my * (state.zoom / oldZoom - 1);
+        state.panOffsetX += currentCenterX - state.pinchStartCenterX;
+        state.panOffsetY += currentCenterY - state.pinchStartCenterY;
         
         scheduleUpdate();
         return;
@@ -2569,10 +2564,9 @@ function handleBackToConverter() {
 function centerCanvas() {
     // 完全按照 index.html 的 centerImage 方式
     const viewport = document.getElementById('canvas-container');
-    const viewportRect = viewport.getBoundingClientRect();
-    const canvasWidth = state.canvasWidth * state.zoom;
-    const canvasHeight = state.canvasHeight * state.zoom;
-
+    var viewportRect = document.getElementById('canvas-container').getBoundingClientRect();
+    var canvasWidth = state.canvasWidth * state.zoom;
+    var canvasHeight = state.canvasHeight * state.zoom;
     state.panOffsetX = (viewportRect.width - canvasWidth) / 2;
     state.panOffsetY = (viewportRect.height - canvasHeight) / 2;
     
