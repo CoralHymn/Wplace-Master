@@ -1588,7 +1588,6 @@ self.onmessage = function(e) {
         previewCtx.putImageData(processedImageData, 0, 0);
         updateTransform();
         updateColorStats(processedImageData);
-        updateEstimatedTime();
     }
 
     /**
@@ -1624,72 +1623,6 @@ self.onmessage = function(e) {
     }
 
     /**
-     * 计算预计完成时间
-     * @param {ImageData} imageData - 图像数据
-     * @returns {string} 格式化的时间字符串
-     */
-    function calculateEstimatedTime(imageData) {
-        if (!imageData || !state.inputImage) {
-            return '--';
-        }
-
-        // 计算非空白像素数量
-        const data = imageData.data;
-        let nonBlankPixels = 0;
-        
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const a = data[i + 3];
-            
-            // 排除完全透明的像素和纯白色背景（可根据需要调整）
-            if (a > 0 && !(r === 255 && g === 255 && b === 255)) {
-                nonBlankPixels++;
-            }
-        }
-
-        if (nonBlankPixels === 0) {
-            return '--';
-        }
-
-        // 每个像素30秒，除以参与人数
-        const totalSeconds = (nonBlankPixels * 30) / state.participantCount;
-        
-        // 格式化时间
-        return formatTime(totalSeconds);
-    }
-
-    /**
-     * 格式化时间为可读字符串
-     * @param {number} seconds - 总秒数
-     * @returns {string} 格式化的时间字符串
-     */
-    function formatTime(seconds) {
-        if (seconds < 60) {
-            return `${Math.ceil(seconds)}s`;
-        } else if (seconds < 3600) {
-            const minutes = Math.ceil(seconds / 60);
-            return `${minutes}min`;
-        } else if (seconds < 86400) {
-            const hours = Math.ceil(seconds / 3600);
-            return `${hours}h`;
-        } else {
-            const days = Math.ceil(seconds / 86400);
-            return `${days}d`;
-        }
-    }
-
-    /**
-     * 更新预计完成时间显示
-     */
-    function updateEstimatedTime() {
-        const timeText = calculateEstimatedTime(state.processedImageData);
-        const t = TRANSLATIONS[currentLanguage];
-        estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${timeText}`;
-    }
-
-    /**
      * 参与人数变化处理
      */
     function handleParticipantCountChange(e) {
@@ -1699,7 +1632,7 @@ self.onmessage = function(e) {
         
         state.participantCount = value;
         participantCountInput.value = value;
-        updateEstimatedTime();
+        updateColorStats(state.processedImageData);
     }
 
     /**
@@ -1917,51 +1850,67 @@ self.onmessage = function(e) {
         updateTransform();
     }
 
-    // ==================== 颜色统计功能 ====================
+    // ==================== 颜色统计功能（含预计时间合并） ====================
     function updateColorStats(imageData) {
         const statsContainer = document.getElementById('color-stats-container');
         const t = TRANSLATIONS[currentLanguage];
 
         if (!imageData) {
             statsContainer.innerHTML = `<p>${t.processImageFirst}</p>`;
+            estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: --`;
             return;
         }
 
         const colorCounts = {};
         const data = imageData.data;
+        let nonBlankPixels = 0;
 
+        // 单次遍历：颜色计数 + 非空白像素计数（整型 key 替代字符串模板）
         for (let i = 0; i < data.length; i += 4) {
-            if (data[i+3] < 128) continue;
-            const colorKey = `rgb(${data[i]}, ${data[i+1]}, ${data[i+2]})`;
-            colorCounts[colorKey] = (colorCounts[colorKey] || 0) + 1;
+            if (data[i + 3] < 128) continue;
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            const key = (r * 65536) + (g * 256) + b;  // 整数 key，避免 GC
+            colorCounts[key] = (colorCounts[key] || 0) + 1;
+            if (!(r === 255 && g === 255 && b === 255)) nonBlankPixels++;
         }
 
-        const sortedColors = Object.entries(colorCounts).sort(([,a],[,b]) => b - a);
+        // 排序 + DOM（仅在有效改时重建）
+        const entries = [];
+        for (const keyStr in colorCounts) {
+            if (Object.prototype.hasOwnProperty.call(colorCounts, keyStr)) {
+                entries.push([parseInt(keyStr), colorCounts[keyStr]]);
+            }
+        }
+        entries.sort((a, b) => b[1] - a[1]);
 
         statsContainer.innerHTML = '';
-
-        if (sortedColors.length === 0) {
+        if (entries.length === 0) {
             statsContainer.innerHTML = `<p>${t.noColorsDetected}</p>`;
-            return;
-        }
+        } else {
+            const frag = document.createDocumentFragment();
+            for (let ei = 0; ei < entries.length; ei++) {
+                const keyInt = entries[ei][0], count = entries[ei][1];
+                const r2 = (keyInt / 65536) | 0, g2 = ((keyInt / 256) | 0) % 256, b2 = keyInt % 256;
+                const colorKey = `rgb(${r2}, ${g2}, ${b2})`;
+                const colorInfo = COLOR_INFO[colorKey] || { name: 'Unknown Color', isPaid: false };
+                let displayName = colorInfo.name;
+                if (colorInfo.name === 'Salmon') displayName = 'Salmon【三文鱼、肉意思】';
+                displayName += colorInfo.isPaid ? ' ★' : '';
 
-        for (const [colorKey, count] of sortedColors) {
-            const colorInfo = COLOR_INFO[colorKey] || { name: 'Unknown Color', isPaid: false };
-            let displayName = colorInfo.name;
-            if (colorInfo.name === 'Salmon') {
-                displayName = 'Salmon【三文鱼、肉意思】';
+                const row = document.createElement('div');
+                row.className = 'color-stat-row';
+                row.innerHTML = `<div class="color-stat-swatch" style="background-color: ${colorKey};"></div><span class="color-stat-name">${displayName}</span><span class="color-stat-count">${count.toLocaleString()} px</span>`;
+                frag.appendChild(row);
             }
-            displayName += colorInfo.isPaid ? ' ★' : '';
-
-            const row = document.createElement('div');
-            row.className = 'color-stat-row';
-            row.innerHTML = `
-                <div class="color-stat-swatch" style="background-color: ${colorKey};"></div>
-                <span class="color-stat-name">${displayName}</span>
-                <span class="color-stat-count">${count.toLocaleString()} px</span>
-            `;
-            statsContainer.appendChild(row);
+            statsContainer.appendChild(frag);
         }
+
+        // 预计时间（合并到同一次遍历，避免再扫一遍像素）
+        const totalSeconds = nonBlankPixels > 0 ? (nonBlankPixels * 30) / Math.max(1, state.participantCount) : 0;
+        if (totalSeconds < 60) estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${Math.ceil(totalSeconds)}s`;
+        else if (totalSeconds < 3600) estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${Math.ceil(totalSeconds / 60)}min`;
+        else if (totalSeconds < 86400) estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${Math.ceil(totalSeconds / 3600)}h`;
+        else estimatedTimeDisplay.textContent = `${t.estimatedTime || 'Estimated Time'}: ${Math.ceil(totalSeconds / 86400)}d`;
     }
 
     function handleExportColors() {
