@@ -194,8 +194,8 @@ function applyErrorDither(imageData, palette, strength, kernel, isLocked, dither
             }
 
             if (isLocked && fullPalette && fullPalette.length > 0) {
-                var selectedColorsArray = Array.from(selectedColorSet).map(function(colorStr) { return JSON.parse(colorStr); });
-                if (selectedColorsArray.length > 0) {
+                var isLockEmpty = selectedColorSet.size === 0;
+                if (!isLockEmpty) {
                     var originalQuantizedColor = findClosestColor(oldColor, fullPalette);
 
                     if (!selectedColorSet.has(JSON.stringify(originalQuantizedColor))) {
@@ -323,8 +323,8 @@ function applyOrderedDither(imageData, palette, strength, bayerMatrix, isLocked,
             }
 
             if (isLocked && fullPalette && fullPalette.length > 0) {
-                var selectedColorsArray = Array.from(selectedColorSet).map(function(colorStr) { return JSON.parse(colorStr); });
-                if (selectedColorsArray.length > 0) {
+                var isLockEmpty = selectedColorSet.size === 0;
+                if (!isLockEmpty) {
                     var originalQuantizedColor = findClosestColor(oldColor, fullPalette);
 
                     if (!selectedColorSet.has(JSON.stringify(originalQuantizedColor))) {
@@ -1461,17 +1461,20 @@ self.onmessage = function(e) {
     }
 
     function findClosestColor(color, palette) {
-        let minDistance = Infinity;
-        let closestColor = palette[0];
-        for (const pColor of palette) {
-            const distance = (color[0] - pColor[0])**2 + (color[1] - pColor[1])**2 + (color[2] - pColor[2])**2;
-            if (distance < minDistance) {
-                minDistance = distance;
-                closestColor = pColor;
-            }
+        var guess = findClosestColor._cache;
+        var minDistance = Infinity;
+        var closestColor = palette[0];
+        if (guess) { var dr=color[0]-guess[0], dg=color[1]-guess[1], db=color[2]-guess[2]; minDistance=dr*dr+dg*dg+db*db; closestColor=guess; }
+        for (var pi = 0; pi < palette.length; pi++) {
+            var pColor = palette[pi];
+            var dr = color[0] - pColor[0], dg = color[1] - pColor[1], db = color[2] - pColor[2];
+            var dist = dr * dr + dg * dg + db * db;
+            if (dist < minDistance) { minDistance = dist; closestColor = pColor; }
         }
+        findClosestColor._cache = closestColor;
         return closestColor;
     }
+    findClosestColor._cache = null;
 
     /**
      * 强制去除半透明像素
@@ -2466,7 +2469,7 @@ self.onmessage = function(e) {
 
                 if (isLocked && fullPalette && fullPalette.length > 0) {
                     const selectedColorsArray = Array.from(selectedColorSet).map(colorStr => JSON.parse(colorStr));
-                    if (selectedColorsArray.length > 0) {
+                    if (!isLockEmpty) {
                         const originalQuantizedColor = findClosestColor(oldColor, fullPalette);
 
                         if (!selectedColorSet.has(JSON.stringify(originalQuantizedColor))) {
@@ -2601,7 +2604,7 @@ self.onmessage = function(e) {
 
                 if (isLocked && fullPalette && fullPalette.length > 0) {
                     const selectedColorsArray = Array.from(selectedColorSet).map(colorStr => JSON.parse(colorStr));
-                    if (selectedColorsArray.length > 0) {
+                    if (!isLockEmpty) {
                         const originalQuantizedColor = findClosestColor(oldColor, fullPalette);
 
                         if (!selectedColorSet.has(JSON.stringify(originalQuantizedColor))) {
