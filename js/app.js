@@ -1486,34 +1486,21 @@ self.onmessage = function(e) {
         const data = imageData.data;
         const newImageData = new ImageData(imageData.width, imageData.height);
         const newData = newImageData.data;
+        const hasReplacements = state.colorReplacements.size > 0;
 
-        // 复制原始数据
-        for (let i = 0; i < data.length; i++) {
-            newData[i] = data[i];
-        }
-
-        // 处理每个像素
+        // 单次遍历：去半透明 + 可选重量化
         for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const a = data[i + 3];
+            const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
 
-            // 透明度小于50%（128）的变成完全透明
             if (a < 128) {
-                newData[i] = 0;
-                newData[i + 1] = 0;
-                newData[i + 2] = 0;
-                newData[i + 3] = 0;
+                newData[i] = 0; newData[i + 1] = 0; newData[i + 2] = 0; newData[i + 3] = 0;
+            } else if (!hasReplacements) {
+                // 无颜色替换时：抖动已量化到调色板，跳过 findClosestColor（4K 节省 ~50ms）
+                newData[i] = r; newData[i + 1] = g; newData[i + 2] = b; newData[i + 3] = 255;
             } else {
-                // 透明度大于等于50%的变成完全不透明，并匹配色板
                 newData[i + 3] = 255;
-                
-                // 找到最接近的色板颜色
-                const closestColor = findClosestColor([r, g, b], palette);
-                newData[i] = closestColor[0];
-                newData[i + 1] = closestColor[1];
-                newData[i + 2] = closestColor[2];
+                var c = findClosestColor([r, g, b], palette);
+                newData[i] = c[0]; newData[i + 1] = c[1]; newData[i + 2] = c[2];
             }
         }
 
