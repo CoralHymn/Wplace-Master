@@ -73,6 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const ditherSelector = document.getElementById('dither-selector');
     const previewCanvas = document.getElementById('preview-canvas');
     const previewCtx = previewCanvas.getContext('2d', { willReadFrequently: true });
+    previewCtx.imageSmoothingEnabled = false;
     const viewport = document.getElementById('preview-canvas-viewport');
     const placeholderText = document.getElementById('placeholder-text');
     const downloadBtn = document.getElementById('download-btn');
@@ -871,6 +872,7 @@ self.onmessage = function(e) {
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.imageSmoothingEnabled = false;
         ctx.drawImage(img, 0, 0);
         const imageData = ctx.getImageData(0, 0, img.width, img.height).data;
 
@@ -1515,6 +1517,7 @@ self.onmessage = function(e) {
         sourceCanvas.width = newWidth;
         sourceCanvas.height = newHeight;
         const sourceCtx = state._sourceCtx;
+        sourceCtx.imageSmoothingEnabled = false;  // resize 会重置 context 状态，每次必须重设
 
         let sourceImageData;
         if (state.brightness !== 100 || state.contrast !== 100 || state.saturation !== 100 || state.sharpness !== 0 || state.hue !== 0 || state.temperature !== 0) {
@@ -1760,10 +1763,14 @@ self.onmessage = function(e) {
         state.zoom *= (e.deltaY < 0 ? zoomFactor : 1 / zoomFactor);
         state.zoom = Math.max(0.2, Math.min(5, state.zoom));
 
-        // pixel-draw 同款：canvas 视觉 rect (will-change: transform → 含 translate)
-        var rect = _getPreviewRect();
-        var mx = e.clientX - rect.left;
-        var my = e.clientY - rect.top;
+        // 推算 canvas 视觉位置（不用 getBoundingClientRect，避免 will-change GPU 层破坏 image-rendering）
+        // L = viewportRect.left + (viewportRect.width - canvasWidth)/2
+        // visualLeft = L + panX → mx_visual = e.clientX - L - panX
+        var rect = _getViewportRect();
+        var Lx = rect.left + (rect.width - previewCanvas.width) / 2;
+        var Ly = rect.top + (rect.height - previewCanvas.height) / 2;
+        var mx = e.clientX - Lx - state.panX;
+        var my = e.clientY - Ly - state.panY;
         state.panX -= mx * (state.zoom / oldZoom - 1);
         state.panY -= my * (state.zoom / oldZoom - 1);
 
@@ -1771,7 +1778,6 @@ self.onmessage = function(e) {
         updateTransform();
         void previewCanvas.offsetWidth;
         previewCanvas.style.transition = '';
-        _cachedPreviewRectTime = 0;
 
         zoomSlider.value = Math.round(state.zoom * 100);
         var zel = document.getElementById('zoom-value');
@@ -1805,7 +1811,10 @@ self.onmessage = function(e) {
 
     function updateTransform() {
         if (!state.inputImage) return;
-        previewCanvas.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+        // 取整平移量，避免亚像素定位导致 canvas 被 GPU 抗锯齿
+        var px = Math.round(state.panX);
+        var py = Math.round(state.panY);
+        previewCanvas.style.transform = `translate(${px}px, ${py}px) scale(${state.zoom})`;
     }
 
     function centerImage() {
@@ -2629,16 +2638,17 @@ self.onmessage = function(e) {
 
             var centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
             var centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-            var rect = _getPreviewRect();
-            var mx = centerX - rect.left;
-            var my = centerY - rect.top;
+            var rect = _getViewportRect();
+            var Lx = rect.left + (rect.width - previewCanvas.width) / 2;
+            var Ly = rect.top + (rect.height - previewCanvas.height) / 2;
+            var mx = centerX - Lx - state.panX;
+            var my = centerY - Ly - state.panY;
             state.panX -= mx * (state.zoom / oldZoom - 1);
             state.panY -= my * (state.zoom / oldZoom - 1);
             previewCanvas.style.transition = 'none';
             updateTransform();
             void previewCanvas.offsetWidth;
             previewCanvas.style.transition = '';
-            _cachedPreviewRectTime = 0;
 
             zoomSlider.value = Math.round(state.zoom * 100);
             var zoomValueEl = document.getElementById('zoom-value');

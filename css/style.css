@@ -471,7 +471,6 @@ input[type="range"] { width: 100%; }
 
 #preview-canvas {
     display: block;
-    will-change: transform;
     transition: transform 0.1s ease-out;
     transform-origin: 0 0;
     image-rendering: -moz-crisp-edges;
