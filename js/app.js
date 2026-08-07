@@ -1745,7 +1745,9 @@ self.onmessage = function(e) {
         const link = document.createElement('a');
         link.download = `${state.activeAlgorithm}_processed.png`;
         link.href = previewCanvas.toDataURL('image/png');
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
     }
 
     function handleZoomSlider() {
@@ -1934,7 +1936,9 @@ self.onmessage = function(e) {
         const link = document.createElement('a');
         link.href = tempCanvas.toDataURL('image/png');
         link.download = 'selected_colors_export.png';
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
     }
 
     // ==================== 颜色选择和替换功能 ====================
