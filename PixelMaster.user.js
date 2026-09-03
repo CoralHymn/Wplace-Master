@@ -360,22 +360,28 @@
         const imageData = pmState.processedImageData || processImage();
         if (!imageData) return;
 
-        const canvas = document.getElementById('pixel-canvas');
-        if (!canvas) return;
+        // 核心图层数据模型是扁平 Uint32Array（packed: (a<<24)|(b<<16)|(g<<8)|r），
+        // 通过 data[y * w + x] 访问。必须按此格式写入，否则替换后
+        // duplicateLayer(new Uint32Array(source.data))、addLayer、绘制、撤销等
+        // 全部会因数据格式不匹配而错位失效。
+        const w = state.canvasWidth;
+        const h = state.canvasHeight;
+        if (!w || !h) { showToast('画布尚未初始化'); return; }
 
-        const w = canvas.width;
-        const h = canvas.height;
-        const newLayerData = Array(h).fill(null).map(() => Array(w).fill(null));
-
+        const iw = imageData.width;
+        const src = imageData.data;
+        const newLayerData = new Uint32Array(w * h);
+        let hasContent = false;
         for (let y = 0; y < h; y++) {
+            const dstRow = y * w;
+            const srcRow = y * iw;
             for (let x = 0; x < w; x++) {
-                const i = (y * w + x) * 4;
-                const r = imageData.data[i];
-                const g = imageData.data[i + 1];
-                const b = imageData.data[i + 2];
-                const a = imageData.data[i + 3];
-                if (a > 128) {
-                    newLayerData[y][x] = 'rgb(' + r + ', ' + g + ', ' + b + ')';
+                const i = (srcRow + x) * 4;
+                if (src[i + 3] > 128) {
+                    newLayerData[dstRow + x] = ((255 << 24) | (src[i + 2] << 16) | (src[i + 1] << 8) | src[i]) >>> 0;
+                    hasContent = true;
+                } else {
+                    newLayerData[dstRow + x] = 0;
                 }
             }
         }
@@ -396,6 +402,11 @@
                 }];
                 state.activeLayerIndex = 0;
                 state.nextLayerId = 2;
+                state._hasContent = hasContent;
+                // 直接替换图层数据后必须让离屏缓存失效，否则 renderCanvas 会复用旧缓存
+                if (typeof window._invalidateLayerCache === 'function') {
+                    window._invalidateLayerCache();
+                }
                 if (typeof window.renderCanvas === 'function') window.renderCanvas();
                 if (typeof window.renderLayerList === 'function') window.renderLayerList();
                 showToast('已替换画布内容');
@@ -474,66 +485,75 @@
     }
 
     function patchRenderCanvas() {
+        // 高级模式的增强渲染：在核心的「Uint32Array -> 离屏缓存 -> drawImage 合成」
+        // 管线之上，额外叠加逐图层的不透明度与混合模式。必须复用离屏缓存读取
+        // Uint32Array 数据，不能按旧的二维字符串数组(layer.data[y][x])解析。
         const _orig = renderCanvas;
 
         renderCanvas = function() {
+            const layers = state.layers;
+            const w = state.canvasWidth;
+            const h = state.canvasHeight;
+
+            // 绘画 / 位移过程中直接走核心批处理与增量渲染，保证流畅
+            if (state.isDrawing || state.isTransforming) { _orig(); return; }
+            if (w === 0 || h === 0) { _orig(); return; }
+
+            // 若所有图层都是默认不透明度/混合模式，核心渲染已完全正确，避免额外开销
+            let needEnhance = false;
+            for (let i = 0; i < layers.length; i++) {
+                const l = layers[i];
+                if ((l.opacity != null && l.opacity !== 1) || (l.blendMode && l.blendMode !== 'normal')) {
+                    needEnhance = true;
+                    break;
+                }
+            }
+            if (!needEnhance) { _orig(); return; }
+
+            // 1. 依据 Uint32Array 图层数据重建脏图层的离屏缓存（与核心一致）
+            for (let i = 0; i < layers.length; i++) {
+                if (state._layerCanvasDirty[i]) _rebuildLayerCanvas(i);
+            }
+
             const canvas = document.getElementById('pixel-canvas');
             if (!canvas) { _orig(); return; }
             const ctx = canvas.getContext('2d');
 
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // 2. 清空主画布并逐层合成（含蒙版裁剪 + 不透明度 + 混合模式）
+            ctx.clearRect(0, 0, w, h);
+            for (let i = 0; i < layers.length; i++) {
+                const layer = layers[i];
+                if (!layer.visible || layer.isMask) continue;
 
-            const tempCanvases = [];
+                const cache = state._layerCanvasCache[i];
+                if (!cache) continue;
 
-            for (let i = 0; i < state.layers.length; i++) {
-                const layer = state.layers[i];
-                if (!layer.visible) continue;
-
-                const maskLayer = (i > 0 && state.layers[i - 1].isMask) ? state.layers[i - 1] : null;
-
-                const tc = document.createElement('canvas');
-                tc.width = canvas.width;
-                tc.height = canvas.height;
-                const tctx = tc.getContext('2d');
-
-                for (let y = 0; y < state.canvasHeight; y++) {
-                    for (let x = 0; x < state.canvasWidth; x++) {
-                        if (layer.data[y][x]) {
-                            if (!maskLayer || maskLayer.data[y][x]) {
-                                tctx.fillStyle = layer.data[y][x];
-                                tctx.fillRect(x, y, 1, 1);
-                            }
-                        }
+                const maskLayer = (i > 0 && layers[i - 1].isMask && layers[i - 1].visible) ? layers[i - 1] : null;
+                let src = cache;
+                if (maskLayer) {
+                    const mcache = state._layerCanvasCache[i - 1];
+                    if (mcache) {
+                        const tc = document.createElement('canvas');
+                        tc.width = w;
+                        tc.height = h;
+                        const tctx = tc.getContext('2d');
+                        tctx.drawImage(cache, 0, 0);
+                        tctx.globalCompositeOperation = 'destination-in';
+                        tctx.drawImage(mcache, 0, 0);
+                        src = tc;
                     }
                 }
 
-                tempCanvases.push({ canvas: tc, layer: layer });
+                ctx.globalAlpha = layer.opacity != null ? layer.opacity : 1;
+                ctx.globalCompositeOperation = (layer.blendMode && layer.blendMode !== 'normal') ? layer.blendMode : 'source-over';
+                ctx.drawImage(src, 0, 0);
             }
-
-            for (const { canvas: tc, layer } of tempCanvases) {
-                const opacity = layer.opacity != null ? layer.opacity : 1;
-                const blendMode = layer.blendMode || 'normal';
-
-                ctx.globalAlpha = opacity;
-                ctx.globalCompositeOperation = blendMode === 'normal' ? 'source-over' : blendMode;
-                ctx.drawImage(tc, 0, 0);
-            }
-
             ctx.globalAlpha = 1;
             ctx.globalCompositeOperation = 'source-over';
 
-            if (state.isTransforming && state.transformPreviewData) {
-                ctx.globalAlpha = 0.5;
-                for (const pixel of state.transformPreviewData) {
-                    ctx.fillStyle = pixel.color;
-                    ctx.fillRect(pixel.x, pixel.y, 1, 1);
-                }
-                ctx.globalAlpha = 1.0;
-            }
-
-            if (state.showGrid && state.zoom >= 8) {
-                if (typeof drawGrid === 'function') drawGrid();
-            }
+            // 3. 形状预览与网格沿用核心逻辑
+            if (typeof _drawShapePreview === 'function') _drawShapePreview();
+            if (state.showGrid && state.zoom >= 8 && typeof drawGrid === 'function') drawGrid();
         };
     }
 
